@@ -1,0 +1,1296 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Noctuaire">
+<meta name="theme-color" content="#0B0E14">
+<title>Noctuaire</title>
+<style>
+:root {
+  --night: #0B0E14; --panel: #131824; --panel-2: #1A2030;
+  --ink: #E8E9EE; --soft: #97A0B0; --faint: #4B5364; --line: #232A38; --line-2: #3A4356;
+  --gold: #D2A24C; --gold-soft: #8C6A2E; --gold-dim: rgba(210, 162, 76, .16);
+  --ivory: #F1ECDF; --danger: #C9574A;
+  --mono: "SF Mono", ui-monospace, Menlo, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Helvetica Neue", system-ui, sans-serif;
+  --sat: env(safe-area-inset-top, 0px); --sab: env(safe-area-inset-bottom, 0px); /* zones sûres iOS ; ?safe=1 les simule hors appareil */
+  --card-w: 200px; /* recalculée en JS d'après l'espace réel du puits (Safari avec barre, plein écran, consigne affichée) */
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html { height: 100%; }
+body {
+  margin: 0; height: 100%; color: var(--ink);
+  background: var(--night);
+  font: 15px/1.4 var(--sans); -webkit-font-smoothing: antialiased;
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+  overscroll-behavior: none; touch-action: none; overflow: hidden;
+}
+button { font: inherit; color: inherit; cursor: pointer; }
+button:active { opacity: .6; }
+#app {
+  height: 100%; height: 100dvh; display: grid; grid-template-rows: auto auto 1fr auto; gap: 12px;
+  padding: calc(var(--sat) + 8px) 16px 0; /* 8 px : la cible de 44 pt du menu (marge −8 px) affleure le bord sans le dépasser */
+  background: radial-gradient(120% 70% at 50% 28%, #121826 0%, var(--night) 62%);
+}
+
+/* ---- en-tête : nom, niveau (= accès Panthéon, Stats et Réglages, cible 44 pt), filet d'XP */
+#head { display: grid; grid-template-columns: 1fr auto; align-items: center; column-gap: 10px; row-gap: 2px; }
+#title { font: 500 .72rem var(--mono); letter-spacing: .22em; color: var(--soft); }
+#menu { display: inline-flex; align-items: center; gap: 9px; min-height: 44px; margin: -8px -10px -8px 0; padding: 0 10px; background: none; border: 0; color: var(--gold); }
+#level { font: 500 .78rem var(--mono); letter-spacing: .08em; }
+#menu .more { font: 700 1.05rem/1 var(--mono); color: var(--soft); }
+#xp { grid-column: 1 / -1; height: 2px; background: var(--line); }
+#xp i { display: block; height: 100%; width: 0; background: var(--gold); transition: width .6s ease; }
+
+/* ---- rail : les 8 symboles ; sous chacun, une pastille par carte encore dans le paquet (rouges quand elles tuent) */
+#rail { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; }
+.sym { border: 1px solid var(--line); border-radius: 6px; padding: 6px 5px 6px; text-align: center; line-height: 1.1; transition: background .2s, border-color .2s; }
+.sym b { display: block; font: 600 .74rem var(--mono); letter-spacing: .06em; }
+.sym .pips { display: flex; gap: 2px; height: 3px; margin-top: 6px; }
+.sym .pips s { flex: 1; border-radius: 1px; background: var(--soft); text-decoration: none; }
+.sym .pips s.gone { background: var(--line); }
+.sym.taken { background: var(--gold); border-color: var(--gold); color: #1A1408; }
+.sym.taken .pips s { background: #8E1B10; }
+.sym.taken .pips s.gone { background: rgba(26, 20, 8, .22); }
+.sym.flash { background: #A8392C; border-color: #A8392C; color: #fff; } /* rouge assez profond pour que le blanc passe 6,4:1 */
+.sym.flash .pips s { background: rgba(255, 255, 255, .92); }
+.sym.flash .pips s.gone { background: rgba(255, 255, 255, .25); }
+
+/* ---- scène : consigne, passes, puits (carte + repères de geste), boutons de secours ; la fin de nuit par-dessus */
+#stage { position: relative; display: grid; grid-template-rows: auto auto 1fr auto; justify-items: center; align-items: center; gap: 6px; min-height: 0; }
+#consigne { grid-row: 1; max-width: 30ch; margin: 0; text-align: center; color: var(--ivory); font-size: .95rem; line-height: 1.35; min-height: 2.7em; display: grid; align-items: center; }
+#consigne[hidden] { display: none; }
+#passes { grid-row: 2; display: flex; gap: 9px; height: 8px; }
+#passes span { width: 8px; height: 8px; border-radius: 50%; border: 1px solid var(--soft); transition: background .3s, border-color .3s; }
+#passes span.on { background: var(--soft); }
+#passes span.off { border-color: var(--faint); }
+#well { grid-row: 3; position: relative; align-self: stretch; justify-self: stretch; display: grid; place-items: center; min-height: 0; }
+#aid { grid-row: 4; display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+#aid[hidden] { display: none; }
+
+.cue { position: absolute; margin: 0; font: 500 .7rem var(--mono); letter-spacing: .18em; text-transform: uppercase; color: var(--soft); opacity: .72; transition: color .15s, opacity .15s; pointer-events: none; white-space: nowrap; }
+.cue.on { color: var(--gold); opacity: 1; }
+.cue.up { top: 4px; left: 50%; transform: translateX(-50%); }
+.cue.down { bottom: 4px; left: 50%; transform: translateX(-50%); }
+.cue.left { left: 2px; top: 50%; writing-mode: vertical-rl; transform: translateY(-50%) rotate(180deg); }
+.cue.right { right: 2px; top: 50%; writing-mode: vertical-rl; transform: translateY(-50%); }
+.cue[hidden] { display: none; }
+
+#card { position: relative; width: var(--card-w); aspect-ratio: 2 / 3; will-change: transform; transition: width .2s; }
+#card .inner { position: absolute; inset: 0; transform-style: preserve-3d; transition: transform 340ms cubic-bezier(.2, .7, .2, 1); }
+#card.up .inner { transform: rotateY(180deg); }
+.face { position: absolute; inset: 0; border-radius: 14px; } /* pas de backface-visibility : la bascule de visibilité ci-dessous suffit et rend pareil partout */
+.face.back { background: linear-gradient(160deg, var(--panel-2), var(--panel)); box-shadow: inset 0 0 0 1px var(--line), inset 0 0 0 8px var(--night), inset 0 0 0 9px var(--gold-dim); }
+.face.back::after { content: ""; position: absolute; left: 50%; top: 50%; width: 26%; aspect-ratio: 1; border: 1px solid var(--gold); opacity: .55; transform: translate(-50%, -50%) rotate(45deg); }
+.face.front { background: var(--ivory); color: var(--night); transform: rotateY(180deg); display: grid; place-items: center; box-shadow: 0 12px 34px rgba(0, 0, 0, .5); }
+.face.front, #card.up .face.back { visibility: hidden; transition: visibility 0s 170ms; } /* les faces s'échangent à mi-retournement */
+#card.up .face.front { visibility: visible; }
+#card.snap .inner, #card.snap .face { transition: none !important; } /* nouvelle carte : pas de retournement, donc pas de délai */
+.face.front .name { position: absolute; top: 12px; left: 14px; font: 600 .8rem/1.2 var(--mono); letter-spacing: .12em; }
+.face.front .name small { display: block; margin-top: 2px; font-size: .7rem; letter-spacing: .1em; color: #63605A; } /* le code du rail et de l'autel, pour l'apprendre */
+.face.front .val { font: 500 4.4rem/1 var(--sans); font-style: normal; letter-spacing: -.03em; }
+/* anneau de maintien (réglage) : se remplit en 600 ms, puis garde */
+#card.ring::before { content: ""; position: absolute; inset: -10px; border-radius: 22px; background: conic-gradient(var(--gold) var(--ring, 0deg), transparent 0);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px)); mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px)); }
+
+#aid button, #sheet button { min-height: 44px; background: transparent; border: 1px solid var(--line-2); border-radius: 999px; padding: 8px 16px; font: 500 .7rem var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--ink); }
+#aid button:disabled { opacity: .3; }
+
+/* ---- autel : un socle qui descend jusqu'au bord de l'écran ; paliers marqués au-dessus des places 4, 6 et 8 */
+#altars { display: grid; gap: 10px; margin: 0 -16px; padding: 10px 16px calc(var(--sab) + 12px); border-top: 1px solid var(--line); background: linear-gradient(180deg, rgba(19, 24, 36, .9), #0D1017); }
+.marks { display: grid; grid-template-columns: repeat(8, 1fr); gap: 5px; height: 16px; margin-bottom: 6px; }
+.mark { position: relative; text-align: center; font: 600 .7rem/1 var(--mono); letter-spacing: .04em; color: #5B6476; transition: color .3s; } /* palier à venir : grisé */
+.mark:not(:empty)::after { content: ""; position: absolute; left: 50%; bottom: -6px; width: 1px; height: 5px; background: currentColor; }
+.mark.reached { color: var(--gold-soft); } /* palier dépassé */
+.mark.current { color: var(--gold); } /* palier en cours */
+.stars { display: grid; grid-template-columns: repeat(8, 1fr); gap: 5px; }
+.star { position: relative; aspect-ratio: 3 / 4; border-radius: 6px; border: 1px dashed var(--line); display: grid; place-items: center; line-height: 1; transition: transform .25s; }
+.star.on { border: 1px solid var(--line-2); background: var(--panel); }
+.star.on b { position: absolute; top: 2px; left: 3px; font: 600 .7rem/1 var(--mono); letter-spacing: 0; color: var(--soft); }
+.star.on i { font: 500 1.05rem var(--sans); font-style: normal; margin-top: .5rem; }
+.star.big { transform: scale(1.16); border-color: var(--gold-soft); background: var(--panel-2); z-index: 1; } /* les trois plus fortes : plus grosses, rien d'autre */
+.star.fallen { opacity: .18; transform: translateY(6px); }
+.tally { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
+.tally .sum { font: 500 1.7rem/1 var(--sans); letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.tally .mult { font: 600 .82rem/1 var(--mono); letter-spacing: .08em; padding: 6px 10px; border-radius: 999px; border: 1px solid var(--line-2); color: var(--soft); transition: color .3s, border-color .3s, background .3s; }
+.tally .mult.up { border-color: var(--gold); color: var(--gold); background: var(--gold-dim); } /* multiplicateur en cours, mis en valeur dès ×2 */
+.altar.ruin .sum { color: var(--danger); }
+
+/* ---- fin de nuit */
+#end { position: absolute; inset: 0; display: grid; place-content: center; gap: 10px; padding: 0 16px; text-align: center; background: var(--night); cursor: pointer; }
+#end[hidden] { display: none; }
+#end .kicker { font: 500 .74rem var(--mono); letter-spacing: .18em; text-transform: uppercase; color: var(--soft); }
+#end.bust .kicker { color: var(--danger); font-size: .95rem; line-height: 1.4; }
+#end .score { font: 500 5rem/1 var(--sans); letter-spacing: -.035em; font-variant-numeric: tabular-nums; }
+#end .sub { color: var(--soft); }
+#end .gods { color: var(--gold); font-size: 1.1rem; }
+#end .gods small { margin-left: 8px; font: 500 .7rem var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--soft); }
+#end .graze { font-size: .88rem; color: var(--soft); }
+#end .graze b { color: var(--gold); font-weight: 500; }
+#end .again { margin-top: 26px; font: 500 .74rem var(--mono); letter-spacing: .2em; text-transform: uppercase; color: var(--gold); }
+/* déblocage : le moment de la progression, encadré, jamais une ligne perdue */
+#end .unlock { margin: 14px auto 0; padding: 12px 16px; max-width: 30ch; border: 1px solid var(--gold-soft); border-radius: 10px; background: var(--gold-dim); }
+#end .unlock em { display: block; font: 500 .7rem var(--mono); font-style: normal; letter-spacing: .18em; text-transform: uppercase; color: var(--gold); margin-bottom: 5px; }
+#end .unlock span { color: var(--ivory); font-size: .95rem; }
+
+/* ---- théophanie : le dieu nommé, plein écran, avant le décompte */
+#theo { position: fixed; inset: 0; z-index: 20; display: grid; place-content: center; justify-items: center; gap: 18px; background: #07090D; }
+#theo[hidden] { display: none; }
+#theo .plate { position: relative; width: min(62vw, 260px); aspect-ratio: 2 / 3; border: 1px solid var(--gold-soft); border-radius: 14px; overflow: hidden; background: linear-gradient(170deg, #10151F, #0A0D13); }
+#theo .plate svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+#theo .plate .veil { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(210, 162, 76, .30), rgba(210, 162, 76, .04)); clip-path: inset(0 0 100% 0); }
+#theo .name { font: 500 2.1rem/1 var(--sans); letter-spacing: .04em; text-transform: uppercase; color: var(--gold); text-align: center; }
+#theo .trad { font: 500 .7rem var(--mono); letter-spacing: .2em; text-transform: uppercase; color: var(--soft); }
+
+/* ---- feuille : Panthéon, Stats, Réglages */
+#sheet { position: fixed; inset: 0; z-index: 10; overflow-y: auto; touch-action: pan-y; background: var(--night); padding: calc(var(--sat) + 10px) 18px calc(var(--sab) + 28px); }
+#sheet[hidden] { display: none; }
+#sheet header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px; }
+#tabs { display: flex; gap: 4px; }
+#tabs button { min-height: 44px; padding: 6px 12px; border: 0; background: none; border-radius: 8px; font: 500 .7rem var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--soft); }
+#tabs button[aria-selected="true"] { color: var(--gold); background: var(--gold-dim); }
+.tab[hidden] { display: none; }
+#sheet h2 { margin: 24px 0 10px; font: 500 .72rem var(--mono); letter-spacing: .2em; text-transform: uppercase; color: var(--gold); }
+#sheet h2:first-child { margin-top: 0; }
+#sheet dl { display: grid; grid-template-columns: 1fr auto; gap: 9px 12px; margin: 0 0 14px; align-items: baseline; }
+#sheet dt { color: var(--soft); }
+#sheet dt small { display: block; font: .7rem var(--mono); color: var(--soft); }
+#sheet dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+#sheet label { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); }
+#sheet label small { display: block; font-size: .78rem; color: var(--soft); }
+#sheet input[type="checkbox"] { width: 22px; height: 22px; accent-color: var(--gold); margin: 0; flex: none; }
+#sheet .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding: 12px 0; border-top: 1px solid var(--line); }
+#sheet .msg { font-size: .8rem; color: var(--soft); }
+#sheet button.danger { color: var(--danger); border-color: rgba(201, 87, 74, .5); }
+
+/* panthéon : un ciel par tradition, dessiné en Canvas ; fiche au tap */
+#trads { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+#trads button { min-height: 44px; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); background: none; font: 500 .7rem var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--soft); }
+#trads button[aria-selected="true"] { border-color: var(--gold); color: var(--gold); }
+#trads button.locked { color: var(--faint); border-style: dashed; }
+#count { margin-left: auto; font: 500 .72rem var(--mono); letter-spacing: .08em; color: var(--soft); }
+#sky { display: block; width: 100%; border: 1px solid var(--line); border-radius: 12px; background: #080A0F; touch-action: manipulation; }
+#godcard { margin-top: 12px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); min-height: 108px; }
+#godcard .who { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+#godcard .who b { font: 500 1.2rem var(--sans); letter-spacing: .02em; }
+#godcard.named .who b { color: var(--gold); }
+#godcard .who span { font: 500 .7rem var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--soft); }
+#godcard .sig { display: flex; gap: 6px; margin: 10px 0; }
+#godcard .sig i { font: 600 .7rem var(--mono); font-style: normal; letter-spacing: .06em; padding: 5px 8px; border-radius: 6px; border: 1px solid var(--line-2); color: var(--soft); }
+#godcard .sig i.on { border-color: var(--gold-soft); color: var(--gold); background: var(--gold-dim); }
+#godcard p { margin: 0; color: var(--ivory); font-size: .92rem; line-height: 1.45; }
+#godcard p.hint { color: var(--soft); }
+
+@media (prefers-reduced-motion: reduce) {
+  #card, #card .inner, #xp i, .sym, .star, #passes span, .cue, .mark, .tally .mult { transition: none; }
+  #card .face { transition: none !important; } /* les règles des faces sont plus spécifiques (#card.up .face.back) : sans !important leur délai de 170 ms survit */
+}
+</style>
+</head>
+<body>
+<main id="app">
+  <header id="head">
+    <span id="title">NOCTUAIRE</span>
+    <button id="menu" aria-label="Niveau, panthéon, stats et réglages"><span id="level">Niveau 1</span><span class="more" aria-hidden="true">⋯</span></button>
+    <div id="xp"><i></i></div>
+  </header>
+  <section id="rail" aria-label="Symboles"></section>
+  <section id="stage">
+    <p id="consigne" hidden></p>
+    <div id="passes" aria-label="Passes"></div>
+    <div id="well">
+      <div class="cue up" id="cue-up">Garder</div>
+      <div class="cue left" id="cue-left">Poser</div>
+      <div class="cue right" id="cue-right">Poser</div>
+      <div id="card" class="down" role="button" tabindex="0" aria-label="Carte">
+        <div class="inner">
+          <div class="face back"></div>
+          <div class="face front"><b class="name"></b><i class="val"></i></div>
+        </div>
+      </div>
+      <p id="hint" class="cue down"></p>
+    </div>
+    <div id="aid" hidden>
+      <button data-a="T">Retourner</button><button data-a="L">Poser</button><button data-a="D">Passer</button><button data-a="U">Garder</button>
+    </div>
+    <div id="end" hidden></div>
+  </section>
+  <section id="altars"></section>
+</main>
+
+<div id="theo" hidden>
+  <div class="plate"><svg id="theo-sky" viewBox="0 0 100 150" aria-hidden="true"></svg><div class="veil"></div></div>
+  <div class="name" id="theo-name"></div>
+  <div class="trad" id="theo-trad"></div>
+</div>
+
+<div id="sheet" hidden>
+  <header>
+    <div id="tabs" role="tablist">
+      <button data-tab="pantheon" role="tab" aria-selected="true">Panthéon</button>
+      <button data-tab="stats" role="tab" aria-selected="false">Stats</button>
+      <button data-tab="reglages" role="tab" aria-selected="false">Réglages</button>
+    </div>
+    <button id="close">Fermer</button>
+  </header>
+
+  <section id="tab-pantheon" class="tab">
+    <div id="trads"></div>
+    <canvas id="sky"></canvas>
+    <div id="godcard"></div>
+  </section>
+
+  <section id="tab-stats" class="tab" hidden>
+    <h2>Stats</h2>
+    <dl id="stats"></dl>
+    <div class="row"><button id="export">Exporter (JSON)</button><span class="msg" id="export-msg"></span></div>
+  </section>
+
+  <section id="tab-reglages" class="tab" hidden>
+    <h2>Réglages</h2>
+    <label><span>Sons <small>provisoires : synthétisés en attendant une vraie direction sonore</small></span><input type="checkbox" id="opt-sound"></label>
+    <label><span>Boutons de secours sous la carte</span><input type="checkbox" id="opt-aid"></label>
+    <label><span>Garder par appui long (anneau, 600 ms)</span><input type="checkbox" id="opt-ring"></label>
+    <div class="row"><button id="replay-tuto">Rejouer l'apprentissage</button></div>
+    <div class="row"><button id="reset" class="danger">Effacer la sauvegarde</button><span class="msg" id="reset-msg"></span></div>
+  </section>
+</div>
+
+<script>
+// Le moteur de référence (engine/engine.js) est inliné ici tel quel par web/build.js,
+// dans une portée de fonction : la page exécute exactement le fichier validé par npm test.
+window.NoctuaireEngine = (function () {
+  'use strict';
+  const module = { exports: {} };
+  
+'use strict';
+/**
+ * NOCTUAIRE — moteur de règles de référence (v3 : deux autels, quatre axes, Patrons, XP).
+ *
+ * Ce fichier EST la spécification exécutable. Toute implémentation (web, Swift) doit
+ * reproduire ses résultats sur engine/vectors.json. Aucune dépendance, aucun DOM.
+ *
+ * Vocabulaire code (le vocabulaire joueur est dans docs/SPEC-v3.md) :
+ *  - card   : { dom: 0..7, ec: 1..6 }                (symbole, valeur)
+ *  - altar  : { stars: [{dom, ec, ord}], taken: Set<dom>, patron: godName|null, flags }
+ *  - action : 'T' | 'U' | 'L' | 'R' | 'D'
+ *      carte FACE CACHÉE : 'T' tirer (retourner, c'est l'engagement) · 'U' garder (clore la nuit)
+ *      carte FACE VISIBLE : 'L' poser à gauche · 'R' poser à droite · 'D' passer (coûte une passe)
+ *    Règle cardinale (Flip 7) : on décide de continuer AVANT de voir la carte. Une carte retournée
+ *    doit être posée ou passée ; si son symbole est pris sur tous les autels et qu'il ne reste
+ *    aucune passe, elle fait tomber la nuit.
+ */
+
+// ---------------------------------------------------------------- données
+const DOMS = ['CIEL', 'MER', 'TERRE', 'FEU', 'GUERRE', 'AMOUR', 'MORT', 'SAVOIR'];
+const DOM_INDEX = Object.fromEntries(DOMS.map((d, i) => [d, i]));
+const ECLATS = [1, 2, 3, 4, 5, 6];
+
+const GODS = [
+  ['Ishtar', 'Mésopotamie', ['AMOUR', 'GUERRE', 'CIEL']],
+  ['Ereshkigal', 'Mésopotamie', ['MORT', 'TERRE', 'SAVOIR']],
+  ['Enki', 'Mésopotamie', ['MER', 'SAVOIR', 'TERRE']],
+  ['Nergal', 'Mésopotamie', ['MORT', 'GUERRE', 'FEU']],
+  ['Nanna', 'Mésopotamie', ['CIEL', 'MER', 'SAVOIR']],
+  ['Marduk', 'Mésopotamie', ['CIEL', 'GUERRE', 'SAVOIR']],
+  ['Aphrodite', 'Grèce', ['AMOUR', 'MER', 'FEU']],
+  ['Hadès', 'Grèce', ['MORT', 'TERRE', 'AMOUR']],
+  ['Athéna', 'Grèce', ['GUERRE', 'SAVOIR', 'FEU']],
+  ['Poséidon', 'Grèce', ['MER', 'TERRE', 'GUERRE']],
+  ['Héphaïstos', 'Grèce', ['FEU', 'TERRE', 'SAVOIR']],
+  ['Zeus', 'Grèce', ['CIEL', 'GUERRE', 'TERRE']],
+  ['Taranis', 'Gaule', ['CIEL', 'FEU', 'GUERRE']],
+  ['Epona', 'Gaule', ['TERRE', 'AMOUR', 'MER']],
+  ['Cernunnos', 'Gaule', ['TERRE', 'MORT', 'FEU']],
+  ['Lugus', 'Gaule', ['SAVOIR', 'FEU', 'CIEL']],
+  ['Sucellos', 'Gaule', ['MORT', 'FEU', 'MER']],
+  ['Belenos', 'Gaule', ['CIEL', 'AMOUR', 'MER']],
+].map(([name, trad, sig]) => ({ name, trad, sig: sig.slice().sort().join('|'), sigArr: sig }));
+const GOD_BY_NAME = Object.fromEntries(GODS.map(g => [g.name, g]));
+
+// Pouvoirs des Patrons implémentés dans ce moteur (6 au lancement du proto v3).
+// Les autres Patrons du SPEC existent comme dieux à nommer mais sans pouvoir tant qu'ils ne sont pas ici.
+const PATRONS = {
+  Hermès:    { kind: 'peek',      text: 'Voir la prochaine carte, une fois par nuit.' },
+  Hadès:     { kind: 'firstDupFree', text: 'Le premier « déjà pris » posé sur son autel est défaussé sans coûter de passe.' },
+  Zeus:      { kind: 'sixthDouble', text: 'La sixième étoile de son autel vaut double.' },
+  Ishtar:    { kind: 'plusOne',   doms: ['AMOUR', 'GUERRE'], text: 'AMOUR et GUERRE valent +1 sur son autel.' },
+  Taranis:   { kind: 'saveOther', text: "Si tout tombe sur son autel, l'autre autel garde ses points." },
+  Cernunnos: { kind: 'fourthPass', text: 'À la quatrième étoile de son autel, une passe revient.' },
+};
+
+const TRAD_LEVEL = { 'Mésopotamie': 1, 'Grèce': 1, 'Gaule': 5, 'Japon': 10, 'Nordique': 20 };
+
+// Seuils de multiplicateur par autel : [nbEtoilesSurCetAutel, multiplicateur]
+const THRESHOLDS = {
+  nuit1: [[4, 2], [6, 3], [8, 5]],
+  orig:  [[5, 2], [7, 3], [9, 5]],
+};
+
+// Ascensions (0 = base). scoreMult s'applique à l'XP et au score affiché.
+const ASCENSIONS = [
+  { id: 0, name: 'Base',        passes: 3, scoreMult: 1.0, sameTraditionForbidden: false, targetMult: 1.0 },
+  { id: 1, name: 'Ascension I', passes: 2, scoreMult: 1.1, sameTraditionForbidden: false, targetMult: 1.0 },
+  { id: 2, name: 'Ascension II', passes: 2, scoreMult: 1.2, sameTraditionForbidden: false, targetMult: 1.25 },
+  { id: 3, name: 'Ascension III', passes: 2, scoreMult: 1.3, sameTraditionForbidden: true, targetMult: 1.25 },
+];
+
+// Progression : XP cumulée requise pour atteindre le niveau L (L>=2). Une seule constante à régler.
+const XP_BASE = 40, XP_EXP = 2.0;
+function xpForLevel(L) { return L <= 1 ? 0 : Math.round(XP_BASE * Math.pow(L, XP_EXP)); }
+function levelForXp(xp) { let L = 1; while (xp >= xpForLevel(L + 1)) L++; return L; }
+const UNLOCKS = {
+  1: 'Un autel, trois axes, trois passes. Mésopotamie et Grèce.',
+  2: 'Le premier Patron.',
+  3: 'Le second autel : quatrième axe et règle de la paire.',
+  4: 'Le Défi du jour.',
+  5: 'La Gaule (six dieux).',
+  6: 'La Veillée (trois nuits, Offrandes).',
+  7: 'Le second Patron.',
+  8: 'Ascension I.',
+  10: 'Le Japon.',
+  12: 'Cartes légendaires dans les Offrandes.',
+  15: 'Syncrétismes.',
+  20: 'Le Nordique.',
+  25: 'Lunaisons.',
+};
+function altarsForLevel(L) { return L >= 3 ? 2 : 1; }
+function patronSlotsForLevel(L) { return L >= 7 ? 2 : L >= 2 ? 1 : 0; }
+
+// ---------------------------------------------------------------- PRNG déterministe (à porter à l'identique)
+// hash53 : cyrb53 (Bryc), résultat 53 bits. On en garde les 32 bits bas comme graine.
+function hash53(str) {
+  let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+  for (let i = 0; i < str.length; i++) {
+    const c = str.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 2654435761);
+    h2 = Math.imul(h2 ^ c, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (h2 >>> 0) * 4294967296 + (h1 >>> 0);
+}
+function seed32(str) { return hash53(str) % 4294967296; }
+// mulberry32
+function rng(seed) {
+  let a = (seed >>> 0) || 1;
+  return function next() {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+// Paquet de 48 cartes, mélange Fisher–Yates avec le PRNG ci-dessus. Ordre initial : dom 0..7 × ec 1..6.
+function makeDeck(seedStr) {
+  const r = rng(seed32(seedStr));
+  const d = [];
+  for (let a = 0; a < DOMS.length; a++) for (const e of ECLATS) d.push({ dom: a, ec: e });
+  for (let i = d.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [d[i], d[j]] = [d[j], d[i]]; }
+  return d;
+}
+
+// ---------------------------------------------------------------- nuit
+/**
+ * newNight(opts)
+ *  seed        : string (graine du paquet)
+ *  altars      : 1 | 2
+ *  patrons     : [godName|null, godName|null]
+ *  passes      : number (défaut selon ascension)
+ *  thresholds  : THRESHOLDS.nuit1 par défaut
+ *  ascension   : 0..3
+ *  level       : niveau du Tisseur (filtre les traditions reconnaissables)
+ */
+function newNight(opts) {
+  const asc = ASCENSIONS[opts.ascension || 0];
+  const nAlt = opts.altars || 1;
+  const patrons = (opts.patrons || [null, null]).slice(0, nAlt);
+  if (asc.sameTraditionForbidden && patrons[0] && patrons[1] && GOD_BY_NAME[patrons[0]].trad === GOD_BY_NAME[patrons[1]].trad) {
+    throw new Error('Ascension III : deux Patrons de la même tradition sont interdits.');
+  }
+  const deck = makeDeck(opts.seed);
+  return {
+    seed: opts.seed, deck, idx: 0, level: opts.level || 1, ascension: asc.id,
+    thresholds: opts.thresholds || THRESHOLDS.nuit1,
+    passes: opts.passes != null ? opts.passes : asc.passes,
+    altars: Array.from({ length: nAlt }, (_, i) => ({ stars: [], taken: new Set(), patron: patrons[i] || null, dupFreeUsed: false, fourthPassGiven: false })),
+    peekUsed: false, faceUp: false, remaining: Array(DOMS.length).fill(ECLATS.length),
+    over: false, result: null, log: [],
+  };
+}
+function current(n) { return n.deck[n.idx]; }
+function reveal(n) { // retourne la carte courante : met à jour le compteur du rail
+  if (n.idx < n.deck.length) { n.remaining[current(n).dom]--; n.faceUp = true; }
+}
+function hasPatron(n, kind) { return n.altars.some(a => a.patron && PATRONS[a.patron] && PATRONS[a.patron].kind === kind); }
+function altarPatronKind(a) { return a.patron && PATRONS[a.patron] ? PATRONS[a.patron].kind : null; }
+
+function mult(n, k) { let m = 1; for (const [s, x] of n.thresholds) if (k >= s) m = x; return m; }
+function nextThreshold(n, k) { for (const [s, x] of n.thresholds) if (k < s) return { at: s, mult: x }; return null; }
+
+/** Valeur d'une étoile compte tenu des Patrons et des paires. */
+function starValue(n, altarIdx, star) {
+  const a = n.altars[altarIdx];
+  let v = star.ec;
+  const kind = altarPatronKind(a);
+  if (kind === 'plusOne' && PATRONS[a.patron].doms.includes(DOMS[star.dom])) v += 1;
+  if (kind === 'sixthDouble' && star.ord === 5) v *= 2;
+  // paire : même symbole présent sur l'autre autel
+  if (n.altars.length === 2) {
+    const other = n.altars[1 - altarIdx];
+    if (other.taken.has(star.dom)) v *= 2;
+  }
+  return v;
+}
+function altarScore(n, i) {
+  const a = n.altars[i];
+  const sum = a.stars.reduce((s, st) => s + starValue(n, i, st), 0);
+  return sum * mult(n, a.stars.length);
+}
+function nightScoreRaw(n) { return n.altars.reduce((s, _, i) => s + altarScore(n, i), 0); }
+function applyAscension(n, raw) { return Math.round(raw * ASCENSIONS[n.ascension].scoreMult); }
+
+/** Les trois étoiles les plus fortes d'un autel (valeur brute ec, égalité → première posée). */
+function top3(a) { return a.stars.slice().sort((x, y) => y.ec - x.ec || x.ord - y.ord).slice(0, 3); }
+/** Les symboles des trois brillantes d'un autel, ou null si l'autel a moins de trois étoiles. */
+function brightDoms(a) { return a.stars.length < 3 ? null : top3(a).map(s => s.dom); }
+function recognize(n, i) {
+  const a = n.altars[i];
+  if (a.stars.length < 3) return null;
+  const sig = top3(a).map(s => DOMS[s.dom]).sort().join('|');
+  const g = GODS.find(g => g.sig === sig);
+  if (!g) return null;
+  if ((TRAD_LEVEL[g.trad] || 1) > n.level) return null; // tradition verrouillée
+  return g.name;
+}
+
+/**
+ * Frôlement (SPEC §6) : à la clôture d'une nuit qui n'a nommé aucun dieu, si deux des trois brillantes
+ * d'un autel appartiennent à la signature d'un dieu endormi, un de ses symboles se révèle dans le panthéon.
+ * Au plus un par nuit. Choix entièrement déterministe :
+ *   autels dans l'ordre (Aube puis Crépuscule) → dieux dans l'ordre de GODS → dieu non encore nommé,
+ *   tradition débloquée, intersection avec les brillantes exactement égale à 2 ; on révèle son symbole
+ *   manquant (celui qui n'était pas au rendez-vous) s'il n'est pas déjà révélé, sinon le premier non révélé.
+ * `brights` : result.brights (un tableau de 3 symboles, ou null, par autel).
+ * Retourne { god, dom } ou null. Ne modifie rien.
+ */
+function grazeFrom(brights, profile, level) {
+  const named = (profile && profile.gods) || {}, revealed = (profile && profile.revealed) || {};
+  for (const b of brights || []) {
+    if (!b || b.length < 3) continue;
+    for (const g of GODS) {
+      if (named[g.name]) continue;                          // déjà nommé : le dieu n'est plus endormi
+      if ((TRAD_LEVEL[g.trad] || 1) > level) continue;       // tradition verrouillée
+      const sig = g.sigArr.map(d => DOM_INDEX[d]);
+      const shared = sig.filter(d => b.includes(d));
+      if (shared.length !== 2) continue;                     // trois en commun = reconnaissance, pas frôlement
+      const already = revealed[g.name] || [];
+      const missing = sig.find(d => !b.includes(d));
+      const dom = already.includes(missing) ? sig.find(d => !already.includes(d)) : missing;
+      if (dom == null) continue;                             // tout est déjà révélé pour ce dieu
+      return { god: g.name, dom };
+    }
+  }
+  return null;
+}
+
+/** Cartes encore dans le paquet qui feraient tomber la nuit si posées sans passe (symbole pris sur tous les autels). */
+function dangerCount(n) {
+  let c = 0;
+  for (let d = 0; d < DOMS.length; d++) if (n.altars.every(a => a.taken.has(d))) c += n.remaining[d];
+  return c;
+}
+function legalActions(n) {
+  if (n.over) return [];
+  if (!n.faceUp) { const acts = ['T']; if (n.altars.some(a => a.stars.length > 0)) acts.push('U'); return acts; }
+  // Carte visible : poser (y compris sur un autel où le symbole est pris : c'est l'écroulement) ou passer.
+  const acts = n.altars.map((_, i) => (i === 0 ? 'L' : 'R'));
+  if (n.passes > 0) acts.push('D');
+  return acts;
+}
+function peek(n) { // Hermès : voir la carte face cachée sans s'engager, une fois par nuit
+  if (!hasPatron(n, 'peek') || n.peekUsed || n.faceUp || n.idx >= n.deck.length) return null;
+  n.peekUsed = true; return current(n);
+}
+
+function finish(n, kind, bustAltar) {
+  n.over = true;
+  let raw = 0, saved = null;
+  if (kind === 'keep') raw = nightScoreRaw(n);
+  else if (kind === 'bust') {
+    // Taranis : si l'autel qui tombe est le sien, l'autre autel est sauvé.
+    const a = n.altars[bustAltar];
+    if (altarPatronKind(a) === 'saveOther' && n.altars.length === 2) { saved = 1 - bustAltar; raw = altarScore(n, saved); }
+  }
+  const counts = kind === 'bust' ? n.altars.map((_, i) => saved === i) : n.altars.map(() => true); // autels qui peuvent nommer ou frôler
+  const gods = n.altars.map((_, i) => (counts[i] ? recognize(n, i) : null));
+  const brights = n.altars.map((a, i) => (counts[i] ? brightDoms(a) : null));
+  n.result = { kind, score: applyAscension(n, raw), raw, gods, brights, stars: n.altars.map(a => a.stars.length), savedAltar: saved, bustAltar: kind === 'bust' ? bustAltar : null };
+  return n.result;
+}
+
+/** Applique une action. Retourne { ok, event, result? }. Appeler reveal(n) après chaque carte consommée. */
+function act(n, action) {
+  if (n.over) return { ok: false, event: 'over' };
+  if (!n.faceUp) {
+    if (action === 'T') { reveal(n); n.log.push({ a: 'T', idx: n.idx }); return { ok: true, event: 'reveal', card: current(n) }; }
+    if (action === 'U') {
+      if (!n.altars.some(a => a.stars.length)) return { ok: false, event: 'nothing-to-keep' };
+      n.log.push({ a: 'U', idx: n.idx });
+      return { ok: true, event: 'keep', result: finish(n, 'keep') };
+    }
+    return { ok: false, event: 'face-down' };
+  }
+  if (action === 'U') return { ok: false, event: 'must-place-or-pass' };
+  if (action === 'T') return { ok: false, event: 'already-revealed' };
+  const c = current(n);
+  if (action === 'D') {
+    if (n.passes <= 0) return { ok: false, event: 'no-pass' };
+    n.passes--; n.idx++; n.faceUp = false; n.log.push({ a: 'D', idx: n.idx - 1 });
+    if (n.idx >= n.deck.length) return { ok: true, event: 'deck-empty', result: finish(n, 'keep') };
+    return { ok: true, event: 'pass' };
+  }
+  const i = action === 'L' ? 0 : action === 'R' ? 1 : -1;
+  if (i < 0 || i >= n.altars.length) return { ok: false, event: 'no-such-altar' };
+  const a = n.altars[i];
+  n.log.push({ a: action, idx: n.idx });
+  if (a.taken.has(c.dom)) {
+    if (altarPatronKind(a) === 'firstDupFree' && !a.dupFreeUsed) { // Hadès
+      a.dupFreeUsed = true; n.idx++; n.faceUp = false;
+      if (n.idx >= n.deck.length) return { ok: true, event: 'deck-empty', result: finish(n, 'keep') };
+      return { ok: true, event: 'hades-free-pass' };
+    }
+    return { ok: true, event: 'bust', result: finish(n, 'bust', i) };
+  }
+  a.taken.add(c.dom); a.stars.push({ dom: c.dom, ec: c.ec, ord: a.stars.length }); n.idx++; n.faceUp = false;
+  if (altarPatronKind(a) === 'fourthPass' && a.stars.length === 4 && !a.fourthPassGiven) { a.fourthPassGiven = true; n.passes++; } // Cernunnos
+  const full = n.altars.every(x => x.stars.length >= DOMS.length);
+  if (full || n.idx >= n.deck.length) return { ok: true, event: 'full', result: finish(n, 'keep') };
+  return { ok: true, event: 'placed', altar: i };
+}
+
+/** Démarre une nuit : la première carte est face cachée, le joueur doit la tirer ('T'). */
+function start(opts) { return newNight(opts); }
+
+// ---------------------------------------------------------------- profil / méta
+function newProfile() { return { xp: 0, gods: {}, revealed: {}, ascensionMax: 0, nights: 0 }; }
+function applyResult(profile, result) {
+  const before = levelForXp(profile.xp);
+  profile.xp += result.score; profile.nights++;
+  const named = [];
+  for (const g of result.gods) if (g) { const st = profile.gods[g] || (profile.gods[g] = { lvl: 0, best: 0 }); st.lvl = Math.min(5, st.lvl + 1); st.best = Math.max(st.best, result.score); named.push(g); }
+  // Frôlement : seulement si la nuit n'a nommé personne (SPEC §6). Le niveau qui compte est celui de la nuit jouée.
+  let graze = null;
+  if (!named.length) {
+    graze = grazeFrom(result.brights || [], profile, before);
+    if (graze) {
+      const rev = profile.revealed || (profile.revealed = {});
+      (rev[graze.god] || (rev[graze.god] = [])).push(graze.dom);
+    }
+  }
+  const after = levelForXp(profile.xp);
+  const unlocks = []; for (let L = before + 1; L <= after; L++) if (UNLOCKS[L]) unlocks.push({ level: L, text: UNLOCKS[L] });
+  return { before, after, unlocks, named, graze };
+}
+
+module.exports = {
+  DOMS, DOM_INDEX, ECLATS, GODS, GOD_BY_NAME, PATRONS, TRAD_LEVEL, THRESHOLDS, ASCENSIONS, UNLOCKS,
+  XP_BASE, XP_EXP, xpForLevel, levelForXp, altarsForLevel, patronSlotsForLevel,
+  hash53, seed32, rng, makeDeck,
+  newNight, start, reveal, current, act, peek, legalActions, mult, nextThreshold, starValue, altarScore, nightScoreRaw, top3, brightDoms, recognize, grazeFrom, dangerCount,
+  newProfile, applyResult,
+};
+
+
+  return module.exports;
+})();
+</script>
+
+<script>
+(function () {
+  'use strict';
+  const E = window.NoctuaireEngine;
+  const $ = (id) => document.getElementById(id);
+  if (!E || typeof E.start !== 'function') { $('hint').textContent = 'Moteur absent : lancer npm run serve'; return; }
+
+  const SYM = E.DOMS.map((d) => d.slice(0, 2)); // CI ME TE FE GU AM MO SA
+  const KEY_PROFILE = 'noctuaire.v3.profile', KEY_SETTINGS = 'noctuaire.v3.settings';
+  const REDUCE = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  const ms = (x) => (REDUCE ? 0 : x);
+  const wait = (t) => new Promise((r) => setTimeout(r, ms(t)));
+  const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V'];
+
+  // Une ligne par dieu (SPEC §6) : lue dans la fiche du panthéon, jamais pendant une nuit.
+  const GOD_LINE = {
+    Ishtar: "Amour et guerre, l'étoile du matin qui descend aux enfers.",
+    Ereshkigal: 'Reine du pays sans retour. Assise, jamais debout.',
+    Enki: 'Seigneur des eaux douces, qui donne la ruse aux hommes.',
+    Nergal: 'Feu de midi, peste et guerre. Époux d’Ereshkigal.',
+    Nanna: 'La lune qui compte les mois et lit l’avenir.',
+    Marduk: 'Il fend Tiamat et bâtit le ciel de sa moitié.',
+    Aphrodite: 'Née de l’écume, elle allume ce qu’elle touche.',
+    'Hadès': 'Il garde les morts et la terre qui nourrit, et enleva Perséphone.',
+    'Athéna': 'Sortie armée du crâne de Zeus. Patronne des artisans.',
+    'Poséidon': 'La mer, le séisme, le cheval : tout ce qui ébranle la terre.',
+    'Héphaïstos': 'Le forgeron boiteux qui fait parler le métal.',
+    Zeus: 'La foudre en main, il règne sur la terre depuis le ciel.',
+    Taranis: 'La roue et la foudre. Le tonnerre des Gaules.',
+    Epona: 'La cavalière, protectrice des juments et des routes.',
+    Cernunnos: 'Le cornu, assis, entre la terre et l’hiver.',
+    Lugus: 'L’artisan aux mille talents, brillant comme le ciel.',
+    Sucellos: 'Le maillet et le tonneau. La mort douce et la vigne.',
+    Belenos: 'Le brillant, soleil guérisseur des sources.',
+  };
+
+  // Position fixe de chaque constellation (coordonnées 0–1 du ciel de sa tradition), générée une fois
+  // par un semis déterministe puis figée ici : elles ne bougent plus d'une session à l'autre, et
+  // restent modifiables à la main si le dessin l'exige.
+  const CONSTELLATIONS = {
+    "Mésopotamie": [
+      { name: "Ishtar", stars: [["AMOUR", 0.2238, 0.1318], ["GUERRE", 0.3675, 0.1138], ["CIEL", 0.3146, 0.2658]] },
+      { name: "Ereshkigal", stars: [["MORT", 0.768, 0.2901], ["TERRE", 0.6674, 0.1922], ["SAVOIR", 0.8168, 0.1254]] },
+      { name: "Enki", stars: [["MER", 0.2128, 0.4959], ["SAVOIR", 0.2836, 0.3744], ["TERRE", 0.3464, 0.5447]] },
+      { name: "Nergal", stars: [["MORT", 0.8304, 0.402], ["GUERRE", 0.721, 0.5509], ["FEU", 0.6905, 0.4219]] },
+      { name: "Nanna", stars: [["CIEL", 0.2201, 0.7853], ["MER", 0.2902, 0.6769], ["SAVOIR", 0.3357, 0.8101]] },
+      { name: "Marduk", stars: [["CIEL", 0.723, 0.6576], ["GUERRE", 0.7595, 0.8326], ["SAVOIR", 0.625, 0.7799]] },
+    ],
+    "Grèce": [
+      { name: "Aphrodite", stars: [["AMOUR", 0.2909, 0.2311], ["MER", 0.2016, 0.1265], ["FEU", 0.3382, 0.1044]] },
+      { name: "Hadès", stars: [["MORT", 0.6968, 0.1256], ["TERRE", 0.7776, 0.2385], ["AMOUR", 0.6607, 0.2464]] },
+      { name: "Athéna", stars: [["GUERRE", 0.2726, 0.3609], ["SAVOIR", 0.3489, 0.4934], ["FEU", 0.2013, 0.4867]] },
+      { name: "Poséidon", stars: [["MER", 0.7581, 0.5482], ["TERRE", 0.6533, 0.4744], ["GUERRE", 0.7902, 0.4144]] },
+      { name: "Héphaïstos", stars: [["FEU", 0.3196, 0.6614], ["TERRE", 0.2317, 0.6913], ["SAVOIR", 0.2894, 0.8195]] },
+      { name: "Zeus", stars: [["CIEL", 0.7405, 0.6612], ["GUERRE", 0.6555, 0.7756], ["TERRE", 0.7947, 0.8093]] },
+    ],
+    "Gaule": [
+      { name: "Taranis", stars: [["CIEL", 0.2646, 0.1099], ["FEU", 0.3438, 0.2225], ["GUERRE", 0.2049, 0.2237]] },
+      { name: "Epona", stars: [["TERRE", 0.7237, 0.1187], ["AMOUR", 0.7862, 0.2401], ["MER", 0.6534, 0.2333]] },
+      { name: "Cernunnos", stars: [["TERRE", 0.2131, 0.4348], ["MORT", 0.3382, 0.3707], ["FEU", 0.3204, 0.5308]] },
+      { name: "Lugus", stars: [["SAVOIR", 0.6698, 0.4132], ["FEU", 0.7995, 0.4383], ["CIEL", 0.7276, 0.5514]] },
+      { name: "Sucellos", stars: [["MORT", 0.2371, 0.6873], ["FEU", 0.3418, 0.7583], ["MER", 0.2178, 0.8195]] },
+      { name: "Belenos", stars: [["CIEL", 0.7724, 0.7096], ["AMOUR", 0.6467, 0.7481], ["MER", 0.7461, 0.8317]] },
+    ],
+  };
+  const TRADS = Object.keys(CONSTELLATIONS);
+  const GOD_BY_NAME = Object.fromEntries(E.GODS.map((g) => [g.name, g]));
+
+  // ---- stockage : localStorage, toujours en try/catch (navigation privée, quota, WebView)
+  const store = {
+    read(key, fallback) { try { const raw = localStorage.getItem(key); return raw ? Object.assign(fallback, JSON.parse(raw)) : fallback; } catch (e) { return fallback; } },
+    write(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { /* on joue sans sauvegarde */ } },
+    clear() { try { localStorage.removeItem(KEY_PROFILE); localStorage.removeItem(KEY_SETTINGS); } catch (e) { /* idem */ } },
+  };
+  const profile = store.read(KEY_PROFILE, Object.assign(E.newProfile(), { log: [], decisions: [], tutorialDone: false, best: 0 }));
+  if (!profile.revealed) profile.revealed = {};   // sauvegardes d'avant le frôlement
+  if (!profile.decisions) profile.decisions = []; // sauvegardes d'avant les métriques
+  const settings = store.read(KEY_SETTINGS, { aidButtons: false, holdRing: false, sound: false }); // son coupé par défaut : provisoire
+  const saveProfile = () => store.write(KEY_PROFILE, profile);
+  const saveSettings = () => store.write(KEY_SETTINGS, settings);
+
+  // ---- état de l'application
+  const params = new URLSearchParams(location.search);
+  if (params.get('safe') === '1') { document.documentElement.style.setProperty('--sat', '59px'); document.documentElement.style.setProperty('--sab', '34px'); } // cadre iPhone (Dynamic Island, indicateur) simulé hors appareil
+  const state = { profile, settings, night: null, last: null, tuto: null, tutoNext: null, busy: false, snapFace: false, levelShown: null, seedOnce: params.get('seed'),
+                  tReady: 0, endShownAt: 0, tab: 'pantheon', trad: TRADS[0], selected: null, hits: [] };
+  state.exportJSON = () => JSON.stringify({ exportedAt: new Date().toISOString(), profile, settings }, null, 2);
+  window.__noctuaire = state; // lecture seule, pour les tests Playwright
+
+  const card = $('card'), front = card.querySelector('.front');
+  const stage = $('stage'), well = $('well'), hint = $('hint'), sheet = $('sheet');
+  const cues = { U: $('cue-up'), L: $('cue-left'), R: $('cue-right'), D: hint };
+
+  // ---- apprentissage : la partie scriptée de la SPEC §12 (un autel ; les brillantes GU5 TE4 CI3 nomment Zeus)
+  const TUTORIAL = {
+    deck: [['TERRE', 4], ['CIEL', 3], ['TERRE', 2], ['GUERRE', 5], ['MER', 1], ['GUERRE', 6]],
+    steps: [
+      { expect: 'T', text: 'Tape la carte pour la retourner.' },
+      { expect: 'L', text: 'TERRE 4. Glisse vers la gauche pour la poser.' },
+      { expect: 'T', text: 'Au rail, TERRE est en or : ses cinq pastilles rouges sont les cartes TERRE encore dans le paquet, et chacune ferait tout tomber. Retourne la suivante.' },
+      { expect: 'L', text: 'CIEL 3. Pose-la.' },
+      { expect: 'T', text: 'Encore une.' },
+      { expect: 'D', text: 'TERRE est déjà pris : la poser ferait tout tomber. Glisse vers le bas pour passer.' },
+      { expect: 'T', text: 'Une passe de moins : les trois points au-dessus de la carte. Retourne.' },
+      { expect: 'L', text: 'GUERRE 5. Pose-la.' },
+      { expect: 'T', text: 'Retourne.' },
+      { expect: 'L', text: 'MER 1. Pose-la : à quatre étoiles, le total double.' },
+      { expect: 'U', text: 'Tu peux garder quand tu veux, avant de retourner. Glisse vers le haut pour garder.' },
+    ],
+  };
+  function installTutorial(n) {
+    const first = TUTORIAL.deck.map(([d, e]) => ({ dom: E.DOM_INDEX[d], ec: e }));
+    n.deck = first.concat(n.deck.filter((c) => !first.some((f) => f.dom === c.dom && f.ec === c.ec))); // 48 cartes, la leçon d'abord : le rail reste juste
+    n.seed = 'apprentissage';
+    state.tuto = { step: 0 };
+  }
+  const tutoStep = () => (state.tuto ? TUTORIAL.steps[state.tuto.step] : null);
+
+  // ---- nuit
+  function freeSeed() { return 'libre|' + new Date().toISOString().slice(0, 10) + '|' + Math.random().toString(36).slice(2, 8); }
+  function startNight(opts = {}) {
+    const L = E.levelForXp(profile.xp);
+    let seed = opts.seed;
+    if (!seed && state.seedOnce) { seed = state.seedOnce; state.seedOnce = null; } // graine imposée : une seule nuit
+    // relance spontanée : le protocole de test veut savoir si Rejouer part de lui-même (< 10 s)
+    if (state.endShownAt && profile.log.length) {
+      const last = profile.log[profile.log.length - 1];
+      if (last.replayMs == null) { last.replayMs = Math.round(performance.now() - state.endShownAt); saveProfile(); }
+    }
+    state.endShownAt = 0;
+    state.night = E.start({ seed: seed || freeSeed(), altars: E.altarsForLevel(L), patrons: [null, null], level: L });
+    state.last = null; state.tuto = null; state.tutoNext = null; state.busy = false;
+    if (opts.tutorial) installTutorial(state.night);
+    card.style.transform = ''; card.style.opacity = ''; state.snapFace = true;
+    state.tReady = performance.now();
+    render();
+  }
+  /** Légal maintenant (moteur) et, pendant la leçon, demandé par la consigne. */
+  function allowed(a) {
+    const n = state.night;
+    if (!n || n.over || !E.legalActions(n).includes(a)) return false;
+    const st = tutoStep();
+    return !st || st.expect === a;
+  }
+  // Pendant une animation, toute entrée est ignorée : jamais de file d'attente, sinon deux gestes rapides
+  // poseraient une carte avant de l'avoir vue.
+  function request(action) {
+    if (!state.night || state.night.over || state.busy) return;
+    perform(action);
+  }
+  async function perform(action) {
+    const n = state.night;
+    if (!allowed(action)) { refuse(); return; }
+    state.busy = true;
+    logDecision(action, n);
+    const multBefore = n.altars.map((a) => E.mult(n, a.stars.length));
+    const r = E.act(n, action);
+    if (state.tuto) state.tuto.step++;
+    if (r.result) settle(r);
+    try { await animate(action, r, multBefore); } catch (e) { /* une animation interrompue ne bloque jamais le jeu */ }
+    if (state.last && state.last.prog.named.length) { try { await theophany(state.last.prog.named); } catch (e) { /* idem */ } }
+    render();
+    state.tReady = performance.now();
+    state.busy = false;
+  }
+  /** Une ligne par décision (SPEC §14) : ce qu'on cherche à mesurer, c'est l'hésitation face cachée. */
+  function logDecision(action, n) {
+    const remaining = n.deck.length - n.idx;
+    profile.decisions.push({
+      a: action,
+      ms: state.tReady ? Math.round(performance.now() - state.tReady) : null, // temps de réflexion depuis que l'écran était prêt
+      up: n.faceUp,                                                          // false = la décision qui compte (continuer ou garder)
+      stars: n.altars.reduce((s, a) => s + a.stars.length, 0),
+      passes: n.passes,
+      danger: remaining > 0 ? +(E.dangerCount(n) / remaining).toFixed(3) : 0,
+    });
+    if (profile.decisions.length > 3000) profile.decisions.splice(0, profile.decisions.length - 3000);
+  }
+  function settle(r) {
+    const n = state.night, res = r.result;
+    const bustDom = res.kind === 'bust' ? E.current(n).dom : null; // la carte fautive est encore la carte courante
+    const prog = E.applyResult(profile, res);
+    profile.best = Math.max(profile.best || 0, res.score);
+    profile.log.push({ d: new Date().toISOString(), seed: n.seed, kind: res.kind, stars: res.stars, score: res.score,
+                       gods: res.gods.filter(Boolean), graze: prog.graze ? prog.graze.god : null, level: prog.before, asc: n.ascension, replayMs: null });
+    if (profile.log.length > 500) profile.log.splice(0, profile.log.length - 500);
+    if (state.tuto) { profile.tutorialDone = true; state.tutoNext = n.idx < n.deck.length ? n.deck[n.idx] : null; }
+    saveProfile();
+    state.last = { result: res, prog, bustDom, rendered: false };
+  }
+
+  // ---- son : provisoire, coupé par défaut. Six sons synthétisés (Web Audio), aucun fichier ; le contexte
+  // audio naît au premier geste du joueur (règle iOS). Sera remplacé par une vraie direction sonore.
+  const audio = (() => {
+    let ctx = null, master = null;
+    const rnd = () => Math.random() * 2 - 1; // bruit blanc : hors moteur, hors graine
+    function ensure() {
+      if (settings.sound !== true) return null;
+      if (!ctx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return null;
+        ctx = new AC(); master = ctx.createGain(); master.gain.value = .55; master.connect(ctx.destination);
+      }
+      if (ctx.state !== 'running') ctx.resume().catch(() => {});
+      return ctx;
+    }
+    function tone(t, { freq, to = freq, type = 'sine', dur, gain = .3, attack = .003 }) {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = type; o.frequency.setValueAtTime(freq, t);
+      if (to !== freq) o.frequency.exponentialRampToValueAtTime(to, t + dur);
+      g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(gain, t + attack); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+      o.connect(g).connect(master); o.start(t); o.stop(t + dur + .02);
+    }
+    function noise(t, { dur, gain = .2, type = 'bandpass', freq = 1000, to = freq, q = 1 }) {
+      const len = Math.ceil(ctx.sampleRate * dur), buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) d[i] = rnd();
+      const src = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+      src.buffer = buf; f.type = type; f.Q.value = q; f.frequency.setValueAtTime(freq, t);
+      if (to !== freq) f.frequency.exponentialRampToValueAtTime(to, t + dur);
+      g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+      src.connect(f).connect(g).connect(master); src.start(t); src.stop(t + dur + .02);
+    }
+    const SOUNDS = {
+      flip:  (t) => { noise(t, { dur: .04, gain: .22, freq: 1800, q: 1.2 }); tone(t, { freq: 180, to: 120, dur: .06, gain: .16 }); },
+      place: (t, k = 0) => { noise(t, { dur: .02, gain: .28, type: 'lowpass', freq: 900 }); tone(t, { freq: 210 + 14 * k, to: 130 + 8 * k, type: 'triangle', dur: .16, gain: .34 }); },
+      pass:  (t) => { noise(t, { dur: .22, gain: .15, freq: 1200, to: 500, q: .8 }); },
+      keep:  (t) => { tone(t, { freq: 523.25, dur: .7, gain: .15 }); tone(t + .01, { freq: 784, dur: .55, gain: .07 }); tone(t, { freq: 261.6, dur: .5, gain: .1, type: 'triangle' }); },
+      tier:  (t) => { noise(t, { dur: .03, gain: .18, type: 'lowpass', freq: 600 }); tone(t, { freq: 330, dur: 1, gain: .2 }); tone(t, { freq: 660, dur: .7, gain: .07 }); tone(t, { freq: 990.5, dur: .5, gain: .035 }); },
+      theo:  (t) => { [523.25, 659.25, 783.99].forEach((f, i) => tone(t + i * .06, { freq: f, dur: 1.4 - i * .2, gain: .12 })); tone(t, { freq: 130.8, dur: 1.6, gain: .09, type: 'triangle' }); },
+      bust:  (t) => { noise(t, { dur: .75, gain: .32, type: 'lowpass', freq: 320, to: 110 }); [0, .07, .16, .28].forEach((d, i) => tone(t + d, { freq: 130 - i * 12, to: 70, type: 'triangle', dur: .18, gain: .28 })); },
+    };
+    const played = []; // trace pour les tests
+    function play(name, arg) { const c = ensure(); if (!c) return; try { SOUNDS[name](c.currentTime + .005, arg); played.push(name); } catch (e) { /* jamais bloquant */ } }
+    return { play, unlock: ensure, played, get ctx() { return ctx; } };
+  })();
+  state.audio = audio;
+
+  // ---- animations : tout est une propriété animée par le moteur du navigateur (Web Animations), rien d'importé
+  function anim(el, frames, duration, easing = 'ease-out', fill = 'none') {
+    const d = ms(duration);
+    if (!d || !el || !el.animate) return Promise.resolve();
+    const done = el.animate(frames, { duration: d, easing, fill }).finished.catch(() => {});
+    return Promise.race([done, new Promise((r) => setTimeout(r, d + 200))]); // jamais bloqué par une animation qui ne finit pas (onglet en arrière-plan, élément retiré)
+  }
+  function haptic(pattern) { try { if (navigator.vibrate) navigator.vibrate(pattern); } catch (e) { /* pas de vibreur */ } }
+  const currentTransform = () => card.style.transform || 'none';
+  function springBack() { const from = currentTransform(); card.style.transform = ''; return anim(card, [{ transform: from }, { transform: 'none' }], 260, 'cubic-bezier(.2,.9,.3,1.15)'); }
+  function refuse() {
+    const from = currentTransform(); card.style.transform = '';
+    anim(card, [{ transform: from }, { transform: 'translateX(-8px)' }, { transform: 'translateX(8px)' }, { transform: 'translateX(-4px)' }, { transform: 'none' }], 320, 'ease-in-out');
+    if (state.tuto) anim($('consigne'), [{ transform: 'scale(1)', color: 'var(--ivory)' }, { transform: 'scale(1.06)', color: 'var(--gold)', offset: .3 }, { transform: 'scale(1)', color: 'var(--ivory)' }], 520, 'ease-out');
+    haptic(12);
+  }
+  function slotEl(altarIdx, k) { return document.querySelector(`.altar[data-altar="${altarIdx}"] .star:nth-child(${k + 1})`); }
+  /** La carte part de sa position courante (déjà déplacée par le doigt) vers une place de l'autel, puis disparaît. */
+  async function flyTo(target) {
+    const from = currentTransform(); card.style.transform = ''; card.style.opacity = '0';
+    const c = card.getBoundingClientRect(), t = target ? target.getBoundingClientRect() : c;
+    const dx = t.left + t.width / 2 - (c.left + c.width / 2), dy = t.top + t.height / 2 - (c.top + c.height / 2), s = Math.max(.12, t.width / c.width);
+    await anim(card, [{ transform: from, opacity: 1 }, { transform: `translate(${dx}px, ${dy}px) scale(${s})`, opacity: .92 }], 300, 'cubic-bezier(.3,.7,.2,1)');
+  }
+  async function enterNext() { // la carte suivante arrive, face cachée
+    state.snapFace = true; render();
+    card.style.opacity = '';
+    await anim(card, [{ opacity: 0, transform: 'scale(.94)' }, { opacity: 1, transform: 'none' }], 200);
+  }
+  async function passAnim() {
+    const from = currentTransform(); card.style.transform = ''; card.style.opacity = '0';
+    await anim(card, [{ transform: from, opacity: 1 }, { transform: 'translateY(60vh) rotate(6deg)', opacity: 0 }], 300, 'cubic-bezier(.4,0,.8,.6)');
+  }
+  async function keepAnim() {
+    const from = currentTransform(); card.style.transform = ''; card.style.opacity = '0';
+    await anim(card, [{ transform: from, opacity: 1 }, { transform: 'translateY(-40vh) scale(.9)', opacity: 0 }], 360, 'cubic-bezier(.3,.6,.2,1)');
+  }
+  async function bustSequence(altarIdx) {
+    const n = state.night, a = n.altars[altarIdx];
+    await flyTo(slotEl(altarIdx, a.stars.length)); // la carte s'abat sur la place suivante
+    const altarEl = document.querySelector(`.altar[data-altar="${altarIdx}"]`);
+    const cell = document.querySelector(`.sym[data-dom="${state.last.bustDom}"]`); if (cell) cell.classList.add('flash');
+    audio.play('bust'); haptic([30, 40, 60]);
+    await anim(altarEl, [{ transform: 'none' }, { transform: 'translateX(-9px)' }, { transform: 'translateX(9px)' }, { transform: 'translateX(-6px)' }, { transform: 'translateX(4px)' }, { transform: 'none' }], 380, 'ease-in-out');
+    const stars = altarEl ? [...altarEl.querySelectorAll('.star.on')] : [];
+    await Promise.all(stars.map((s, i) => anim(s, [{ transform: 'none', opacity: 1 }, { transform: `translateY(46px) rotate(${i % 2 ? 8 : -8}deg)`, opacity: 0 }], 420 + i * 40, 'cubic-bezier(.4,0,1,1)', 'forwards')));
+  }
+  async function animate(action, r, multBefore) {
+    const n = state.night;
+    if (action === 'T') { audio.play('flip'); render(); await wait(340); return; }
+    if (action === 'D') { audio.play('pass'); await passAnim(); if (!n.over) await enterNext(); return; }
+    if (action === 'U') { audio.play('keep'); await keepAnim(); return; }
+    // poser
+    if (r.event === 'bust') { await bustSequence(r.result.bustAltar); return; }
+    if (r.event === 'hades-free-pass') { await passAnim(); if (!n.over) await enterNext(); return; }
+    const i = action === 'R' ? 1 : 0, a = n.altars[i];
+    await flyTo(slotEl(i, a.stars.length - 1));
+    audio.play('place', a.stars.length - 1);
+    if (n.over) return;
+    await enterNext();
+    if (E.mult(n, a.stars.length) !== multBefore[i]) { // le multiplicateur vient de changer : le sous-total pulse
+      const sum = document.querySelector(`.altar[data-altar="${i}"] .sum`), mult = document.querySelector(`.altar[data-altar="${i}"] .mult`);
+      anim(sum, [{ transform: 'scale(1)' }, { transform: 'scale(1.22)', color: 'var(--gold)', offset: .35 }, { transform: 'scale(1)' }], 460, 'ease-out');
+      anim(mult, [{ transform: 'scale(1)' }, { transform: 'scale(1.3)', offset: .35 }, { transform: 'scale(1)' }], 460, 'ease-out');
+      audio.play('tier'); haptic(20);
+    }
+  }
+  function countUp(el, to, duration) {
+    const d = ms(duration);
+    if (!d) { el.textContent = to; return; }
+    const t0 = performance.now();
+    (function step(t) { const k = Math.min(1, (t - t0) / d); el.textContent = Math.round(to * (1 - Math.pow(1 - k, 3))); if (k < 1) requestAnimationFrame(step); })(t0);
+  }
+
+  /** Théophanie : le ciel s'arrête, la constellation du dieu s'allume sous un voile d'or, son nom paraît,
+   *  puis la plaque s'envole vers l'accès au panthéon. Tout est dessiné et animé en code. */
+  async function theophany(names) {
+    const theo = $('theo'), plate = theo.querySelector('.plate'), veil = theo.querySelector('.veil');
+    for (const name of names) {
+      const g = GOD_BY_NAME[name], cst = (CONSTELLATIONS[g.trad] || []).find((c) => c.name === name);
+      // la constellation est recadrée sur son propre englobant : elle occupe le cœur de la plaque, quelle
+      // que soit sa place dans le ciel de sa tradition
+      const raw = (cst ? cst.stars : []).map(([dom, x, y]) => [x, y]);
+      const xs = raw.map((p) => p[0]), ys = raw.map((p) => p[1]);
+      const w0 = Math.max(...xs) - Math.min(...xs), h0 = Math.max(...ys) - Math.min(...ys);
+      const k = Math.min(56 / Math.max(w0, .001), 84 / Math.max(h0, .001));
+      const ox = (Math.min(...xs) + w0 / 2), oy = (Math.min(...ys) + h0 / 2);
+      const pts = raw.map(([x, y]) => [50 + (x - ox) * k, 75 + (y - oy) * k]);
+      const lines = pts.map((p, i) => { const q = pts[(i + 1) % pts.length]; return `<line x1="${p[0].toFixed(1)}" y1="${p[1].toFixed(1)}" x2="${q[0].toFixed(1)}" y2="${q[1].toFixed(1)}" stroke="#D2A24C" stroke-opacity=".45" stroke-width=".6"/>`; }).join('');
+      const dots = pts.map((p, i) => `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="${i === 0 ? 3 : 2.4}" fill="#F1ECDF"/><circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="6" fill="#D2A24C" fill-opacity=".16"/>`).join('');
+      $('theo-sky').innerHTML = lines + dots;
+      $('theo-name').textContent = name.toUpperCase();
+      $('theo-trad').textContent = g.trad;
+      theo.hidden = false;
+      audio.play('theo'); haptic([12, 60, 24]);
+      await wait(200);                                                        // le gel
+      veil.style.clipPath = 'inset(0 0 100% 0)';
+      await anim(veil, [{ clipPath: 'inset(0 0 100% 0)' }, { clipPath: 'inset(0 0 0% 0)' }], 600, 'cubic-bezier(.3,.7,.2,1)', 'forwards');
+      await Promise.all([
+        anim($('theo-name'), [{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }], 420),
+        anim(plate, [{ transform: 'scale(.98)' }, { transform: 'scale(1)' }], 420),
+      ]);
+      await wait(700);
+      const m = $('menu').getBoundingClientRect(), p = plate.getBoundingClientRect();
+      await anim(theo, [{ opacity: 1 }, { opacity: 0 }], 420, 'ease-in', 'forwards');
+      await anim(plate, [{ transform: 'none' }, { transform: `translate(${(m.left + m.width / 2 - p.left - p.width / 2).toFixed(0)}px, ${(m.top + m.height / 2 - p.top - p.height / 2).toFixed(0)}px) scale(.06)` }], 420, 'cubic-bezier(.4,0,.7,.6)');
+      theo.hidden = true; theo.style.opacity = ''; plate.style.transform = '';
+      if (theo.getAnimations) theo.getAnimations().forEach((a) => a.cancel());
+      if (plate.getAnimations) plate.getAnimations().forEach((a) => a.cancel());
+    }
+  }
+
+  // ---- rendu
+  function render() {
+    const n = state.night;
+    const L = E.levelForXp(profile.xp), lo = E.xpForLevel(L), hi = E.xpForLevel(L + 1);
+    $('level').textContent = 'Niveau ' + L;
+    const bar = $('xp').firstElementChild;
+    if (state.levelShown !== null && state.levelShown !== L) { bar.style.transition = 'none'; bar.style.width = '0%'; void bar.offsetWidth; bar.style.transition = ''; } // changement de niveau : la barre repart de zéro
+    state.levelShown = L;
+    bar.style.width = Math.round(100 * (profile.xp - lo) / (hi - lo)) + '%';
+    const bust = n.over && state.last && state.last.result.kind === 'bust';
+
+    $('rail').innerHTML = E.DOMS.map((d, i) => {
+      const taken = n.altars.some((a) => a.taken.has(i));
+      const flash = bust && state.last.bustDom === i;
+      const left = n.remaining[i];
+      const pips = E.ECLATS.map((_, k) => `<s class="${k < left ? '' : 'gone'}"></s>`).join('');
+      const label = `${d}, ${left} carte${left > 1 ? 's' : ''} dans le paquet${taken ? ', posé : chacune ferait tout tomber' : ''}`;
+      return `<div class="sym${taken ? ' taken' : ''}${flash ? ' flash' : ''}" data-dom="${i}" role="img" aria-label="${label}"><b>${SYM[i]}</b><i class="pips">${pips}</i></div>`;
+    }).join('');
+
+    $('passes').innerHTML = Array.from({ length: Math.max(n.passes, 3) }, (_, i) => `<span class="${i < n.passes ? 'on' : 'off'}"></span>`).join('');
+
+    const c = E.current(n), up = n.faceUp && !n.over;
+    if (state.snapFace) card.classList.add('snap');
+    card.classList.toggle('up', !!up); card.classList.toggle('down', !up);
+    if (up && c) { front.querySelector('.name').innerHTML = `${E.DOMS[c.dom]}<small>${SYM[c.dom]}</small>`; front.querySelector('.val').textContent = c.ec; }
+    if (state.snapFace) { void card.offsetWidth; card.classList.remove('snap'); state.snapFace = false; }
+
+    for (const a of ['U', 'L', 'R', 'D']) cues[a].hidden = !allowed(a);
+    hint.hidden = false;
+    hint.textContent = n.over ? '' : (!n.faceUp ? (allowed('T') ? 'Retourner' : '') : (allowed('D') ? 'Passer' : ''));
+
+    $('altars').innerHTML = n.altars.map((a, i) => {
+      const big = new Set(a.stars.length >= 3 ? E.top3(a).map((s) => s.ord) : []);
+      const slots = Array.from({ length: E.DOMS.length }, (_, k) => {
+        const s = a.stars[k];
+        if (!s) return '<div class="star"></div>';
+        return `<div class="star on${big.has(s.ord) ? ' big' : ''}${bust ? ' fallen' : ''}"><b>${SYM[s.dom]}</b><i>${s.ec}</i></div>`;
+      }).join('');
+      const m = E.mult(n, a.stars.length);
+      const marks = Array.from({ length: E.DOMS.length }, (_, k) => {
+        const th = n.thresholds.find(([at]) => at === k + 1);
+        if (!th) return '<div class="mark"></div>';
+        const reached = a.stars.length >= th[0];
+        return `<div class="mark${reached ? (m === th[1] ? ' current' : ' reached') : ''}">×${th[1]}</div>`;
+      }).join('');
+      return `<div class="altar${bust ? ' ruin' : ''}" data-altar="${i}"><div class="marks">${marks}</div><div class="stars">${slots}</div>` +
+        `<div class="tally"><span class="sum">${bust ? 0 : E.altarScore(n, i)}</span><span class="mult${m > 1 ? ' up' : ''}" aria-label="multiplicateur ×${m}">×${m}</span></div></div>`;
+    }).join('');
+
+    const st = tutoStep();
+    $('consigne').hidden = !st || n.over;
+    if (st) $('consigne').textContent = st.text;
+
+    const aid = $('aid');
+    aid.hidden = !settings.aidButtons || n.over;
+    aid.querySelectorAll('button').forEach((b) => { b.disabled = !allowed(b.dataset.a); });
+
+    renderEnd();
+  }
+  function renderEnd() {
+    const end = $('end'), n = state.night;
+    end.hidden = !n.over;
+    if (!n.over || !state.last || state.last.rendered) return;
+    state.last.rendered = true;
+    const { result, prog, bustDom } = state.last;
+    if (result.kind === 'bust') {
+      end.className = 'bust';
+      end.innerHTML = `<div class="kicker">${E.DOMS[bustDom]} était déjà pris</div><div class="again">Rejouer</div>`;
+    } else {
+      end.className = '';
+      const unlock = prog.unlocks[0];
+      const gods = prog.named;
+      end.innerHTML = `<div class="kicker">Nuit gardée</div><div class="score">0</div>` +
+        `<div class="sub">+${result.score} XP</div>` +
+        (gods.length ? `<div class="gods">${gods.join(', ')}<small>nommé${gods.length > 1 ? 's' : ''}</small></div>` : '') +
+        (prog.graze ? `<div class="graze"><b>${E.DOMS[prog.graze.dom]}</b> s’allume dans le panthéon.</div>` : '') +
+        (unlock ? `<div class="unlock"><em>Niveau ${unlock.level}</em><span>${unlock.text}</span></div>` : '') +
+        (state.tutoNext ? `<div class="sub">La carte suivante était ${E.DOMS[state.tutoNext.dom]} ${state.tutoNext.ec}.</div>` : '') +
+        `<div class="again">Rejouer</div>`;
+      countUp(end.querySelector('.score'), result.score, 600);
+      const box = end.querySelector('.unlock');
+      if (box) anim(box, [{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }], 420);
+    }
+    state.endShownAt = performance.now();
+    anim(end, [{ opacity: 0, transform: 'translateY(10px)' }, { opacity: 1, transform: 'none' }], 320);
+  }
+
+  // ---- gestes : tap = retourner ; glisser gauche/droite = poser ; bas = passer ; haut = garder
+  const THRESH = 72, TAP_MAX = 10, FLICK = .7;
+  let g = null, ringTimer = null;
+  const dirOf = (dx, dy) => (Math.abs(dx) > Math.abs(dy) ? (dx < 0 ? 'L' : 'R') : (dy < 0 ? 'U' : 'D'));
+  function setCue(a) { for (const k in cues) cues[k].classList.toggle('on', k === a); }
+  function startRing() {
+    const t0 = performance.now(); card.classList.add('ring');
+    ringTimer = setInterval(() => {
+      const k = Math.min(1, (performance.now() - t0) / 600);
+      card.style.setProperty('--ring', (k * 360) + 'deg');
+      if (k >= 1) { cancelRing(); g = null; request('U'); }
+    }, 16);
+  }
+  function cancelRing() { if (ringTimer) { clearInterval(ringTimer); ringTimer = null; } card.classList.remove('ring'); card.style.removeProperty('--ring'); }
+  stage.addEventListener('pointerdown', (e) => {
+    if (!state.night || state.night.over || e.button > 0 || e.target.closest('#aid')) return;
+    audio.unlock();
+    g = { id: e.pointerId, x0: e.clientX, y0: e.clientY, t0: performance.now(), dx: 0, dy: 0, moved: false };
+    try { stage.setPointerCapture(e.pointerId); } catch (err) { /* pas de capture : le geste marche quand même */ }
+    if (settings.holdRing && !state.busy && allowed('U')) startRing();
+  });
+  stage.addEventListener('pointermove', (e) => {
+    if (!g || e.pointerId !== g.id) return;
+    g.dx = e.clientX - g.x0; g.dy = e.clientY - g.y0;
+    if (!g.moved && Math.hypot(g.dx, g.dy) > TAP_MAX) { g.moved = true; cancelRing(); }
+    if (!g.moved || state.busy) return;
+    const d = dirOf(g.dx, g.dy), ok = allowed(d), k = ok ? .95 : .25; // résistance quand le geste ne mène nulle part
+    card.style.transform = `translate(${g.dx * k}px, ${g.dy * k}px) rotate(${g.dx * k * .05}deg)`;
+    setCue(ok && Math.hypot(g.dx, g.dy) > THRESH ? d : null);
+  });
+  function release(e) {
+    audio.unlock();
+    const gg = g; g = null; cancelRing(); setCue(null);
+    if (!gg || state.busy) { if (gg && gg.moved) springBack(); return; }
+    const dist = Math.hypot(gg.dx, gg.dy), dt = Math.max(1, performance.now() - gg.t0);
+    if (!gg.moved) { if (dt < 400) request('T'); return; } // tap
+    const d = dirOf(gg.dx, gg.dy);
+    if (dist >= THRESH || (dist > 36 && dist / dt > FLICK)) { if (allowed(d)) request(d); else refuse(); return; }
+    springBack();
+  }
+  stage.addEventListener('pointerup', (e) => { if (g && e.pointerId === g.id) release(e); });
+  stage.addEventListener('pointercancel', (e) => { if (g && e.pointerId === g.id) { g = null; cancelRing(); setCue(null); springBack(); } });
+  $('end').addEventListener('pointerup', () => { if (state.night.over) startNight(); });
+  $('aid').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) request(b.dataset.a); });
+
+  // ---- clavier : secours d'accessibilité et outil des tests
+  const KEYS = { ArrowLeft: 'L', ArrowRight: 'R', ArrowDown: 'D', ArrowUp: 'U', ' ': 'T', Enter: 'T' };
+  window.addEventListener('keydown', (e) => {
+    if (!sheet.hidden) { if (e.key === 'Escape') closeSheet(); return; }
+    if (!(e.key in KEYS)) return;
+    e.preventDefault(); audio.unlock();
+    if (state.night.over) { if (KEYS[e.key] === 'T') startNight(); return; }
+    request(KEYS[e.key]);
+  });
+
+  // ---- panthéon : trois ciels, six constellations chacun, dessinés en Canvas 2D sur un semis déterministe
+  const sky = $('sky');
+  /** État d'un dieu pour le joueur : nommé (avec son niveau), endormi, ou verrouillé par la tradition. */
+  function godState(name) {
+    const g = GOD_BY_NAME[name], L = E.levelForXp(profile.xp);
+    if ((E.TRAD_LEVEL[g.trad] || 1) > L) return { kind: 'locked', need: E.TRAD_LEVEL[g.trad] };
+    const st = profile.gods[name];
+    if (st) return { kind: 'named', lvl: st.lvl, best: st.best };
+    return { kind: 'asleep', revealed: profile.revealed[name] || [] };
+  }
+  function drawSky() {
+    const w = sky.clientWidth || 320, h = Math.round(Math.min(w * 1.25, Math.max(300, window.innerHeight * .52)));
+    const dpr = Math.min(window.devicePixelRatio || 1, 3);
+    sky.style.height = h + 'px'; sky.width = Math.round(w * dpr); sky.height = Math.round(h * dpr);
+    const x = sky.getContext('2d');
+    if (!x) return;
+    x.setTransform(dpr, 0, 0, dpr, 0, 0);
+    x.clearRect(0, 0, w, h);
+    // fond semé : même graine, même ciel à chaque ouverture
+    const r = E.rng(E.seed32('ciel|' + state.trad));
+    for (let i = 0; i < 150; i++) {
+      const px = r() * w, py = r() * h, rad = .3 + r() * .9, a = .1 + r() * .45;
+      x.beginPath(); x.arc(px, py, rad, 0, Math.PI * 2);
+      x.fillStyle = `rgba(200, 214, 236, ${a.toFixed(3)})`; x.fill();
+    }
+    state.hits = [];
+    for (const cst of CONSTELLATIONS[state.trad]) {
+      const st = godState(cst.name);
+      const pts = cst.stars.map(([dom, nx, ny]) => ({ dom, x: nx * w, y: ny * h }));
+      const named = st.kind === 'named', locked = st.kind === 'locked';
+      const sel = state.selected === cst.name;
+      // liens
+      x.beginPath();
+      for (let i = 0; i < pts.length; i++) { const p = pts[i], q = pts[(i + 1) % pts.length]; x.moveTo(p.x, p.y); x.lineTo(q.x, q.y); }
+      x.setLineDash(named ? [] : [2, 4]);
+      x.strokeStyle = locked ? 'rgba(120, 132, 152, .12)' : named ? 'rgba(210, 162, 76, .55)' : 'rgba(151, 160, 176, .28)';
+      x.lineWidth = named ? 1.1 : .8; x.stroke(); x.setLineDash([]);
+      // étoiles
+      for (const p of pts) {
+        const rad = locked ? 1.2 : named ? 2.2 + (st.lvl || 1) * .45 : 1.7;
+        if (named) { const grd = x.createRadialGradient(p.x, p.y, 0, p.x, p.y, rad * 5); grd.addColorStop(0, 'rgba(210, 162, 76, .40)'); grd.addColorStop(1, 'rgba(210, 162, 76, 0)'); x.fillStyle = grd; x.beginPath(); x.arc(p.x, p.y, rad * 5, 0, Math.PI * 2); x.fill(); }
+        x.beginPath(); x.arc(p.x, p.y, rad, 0, Math.PI * 2);
+        x.fillStyle = locked ? 'rgba(150, 162, 182, .22)' : named ? '#F1ECDF' : 'rgba(226, 232, 244, .62)';
+        x.fill();
+        // un symbole révélé par frôlement s'écrit à côté de son étoile
+        if (st.kind === 'asleep' && st.revealed.includes(E.DOM_INDEX[p.dom])) {
+          x.font = '600 11px ui-monospace, monospace'; x.fillStyle = 'rgba(210, 162, 76, .95)'; x.textAlign = 'center';
+          x.fillText(p.dom.slice(0, 2), p.x, p.y - rad - 5);
+        }
+      }
+      const cx = pts.reduce((s, p) => s + p.x, 0) / pts.length, cy = pts.reduce((s, p) => s + p.y, 0) / pts.length;
+      const spread = Math.max(...pts.map((p) => Math.hypot(p.x - cx, p.y - cy)));
+      if (named) { // le nom se pose sous l'étoile la plus basse (au-dessus si le bord du ciel est trop proche)
+        const low = Math.max(...pts.map((p) => p.y)), high = Math.min(...pts.map((p) => p.y));
+        const y = low + 18 < h - 6 ? low + 18 : high - 12;
+        x.font = '500 11px -apple-system, system-ui, sans-serif'; x.textAlign = 'center';
+        x.fillStyle = 'rgba(210, 162, 76, .95)';
+        x.fillText(cst.name.toUpperCase() + (st.lvl > 1 ? '  ' + ROMAN[st.lvl] : ''), cx, y);
+      }
+      if (sel) { x.beginPath(); x.arc(cx, cy, spread + 16, 0, Math.PI * 2); x.strokeStyle = 'rgba(210, 162, 76, .5)'; x.setLineDash([3, 3]); x.lineWidth = 1; x.stroke(); x.setLineDash([]); }
+      state.hits.push({ name: cst.name, x: cx, y: cy, r: Math.max(38, spread + 14) });
+      (state.starPoints || (state.starPoints = {}))[cst.name] = pts.map((p) => ({ x: p.x, y: p.y })); // pour les tests de composition
+    }
+  }
+  function renderPantheon() {
+    const L = E.levelForXp(profile.xp);
+    $('trads').innerHTML = TRADS.map((t) => {
+      const locked = (E.TRAD_LEVEL[t] || 1) > L;
+      return `<button data-trad="${t}" role="tab" aria-selected="${t === state.trad}" class="${locked ? 'locked' : ''}">${t}${locked ? ' · niv. ' + E.TRAD_LEVEL[t] : ''}</button>`;
+    }).join('') + `<span id="count">${Object.keys(profile.gods).length} / ${E.GODS.length}</span>`;
+    drawSky();
+    renderGodCard();
+  }
+  function renderGodCard() {
+    const box = $('godcard');
+    if (!state.selected) {
+      box.className = '';
+      box.innerHTML = '<p class="hint">Touche une constellation pour la lire. Les dieux nommés brillent ; les endormis se révèlent quand deux de tes trois plus fortes étoiles portent leur signature.</p>';
+      return;
+    }
+    const g = GOD_BY_NAME[state.selected], st = godState(state.selected);
+    const sigCells = (known) => g.sigArr.map((d) => `<i class="${known.includes(d) ? 'on' : ''}">${known.includes(d) ? d.slice(0, 2) : '· ·'}</i>`).join('');
+    if (st.kind === 'named') {
+      box.className = 'named';
+      box.innerHTML = `<div class="who"><b>${g.name}</b><span>${g.trad}${st.lvl > 1 ? ' · ' + ROMAN[st.lvl] : ''}</span></div>` +
+        `<div class="sig">${sigCells(g.sigArr)}</div><p>${GOD_LINE[g.name] || ''}</p>`;
+    } else if (st.kind === 'locked') {
+      box.className = '';
+      box.innerHTML = `<div class="who"><b>Verrouillé</b><span>${g.trad}</span></div><p class="hint">Cette tradition s’ouvre au niveau ${st.need}.</p>`;
+    } else {
+      const known = g.sigArr.filter((d) => st.revealed.includes(E.DOM_INDEX[d]));
+      box.className = '';
+      box.innerHTML = `<div class="who"><b>Endormi</b><span>${g.trad}</span></div><div class="sig">${sigCells(known)}</div>` +
+        `<p class="hint">${known.length ? 'Trois symboles au complet, et il se nomme.' : 'Aucun symbole connu pour l’instant.'}</p>`;
+    }
+  }
+  $('trads').addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-trad]');
+    if (!b) return;
+    state.trad = b.dataset.trad; state.selected = null; renderPantheon();
+  });
+  let skyPress = null;
+  sky.addEventListener('pointerdown', (e) => { skyPress = { x: e.clientX, y: e.clientY }; });
+  sky.addEventListener('pointerup', (e) => {
+    if (!skyPress || Math.hypot(e.clientX - skyPress.x, e.clientY - skyPress.y) > 12) { skyPress = null; return; }
+    skyPress = null;
+    const rect = sky.getBoundingClientRect(), px = e.clientX - rect.left, py = e.clientY - rect.top;
+    let best = null, bestD = Infinity;
+    for (const h of state.hits) { const d = Math.hypot(px - h.x, py - h.y); if (d < h.r && d < bestD) { best = h.name; bestD = d; } }
+    state.selected = best === state.selected ? null : best;
+    drawSky(); renderGodCard();
+  });
+
+  // ---- feuille : onglets, Stats, Réglages
+  const median = (arr) => { if (!arr.length) return null; const s = arr.slice().sort((a, b) => a - b); return s[Math.floor(s.length / 2)]; };
+  function computeStats() {
+    const log = profile.log, kept = log.filter((l) => l.kind === 'keep'), busts = log.length - kept.length;
+    const dec = profile.decisions || [];
+    const pct = (a, b) => (b ? Math.round(100 * a / b) + ' %' : '—');
+    const secs = (v) => (v == null ? '—' : (v / 1000).toFixed(2).replace('.', ',') + ' s');
+    const hidden = median(dec.filter((d) => d.up === false && d.ms != null).map((d) => d.ms));   // la décision qui compte
+    const place = median(dec.filter((d) => d.up === true && d.ms != null).map((d) => d.ms));
+    const noPass = median(dec.filter((d) => d.passes === 0 && d.ms != null).map((d) => d.ms));
+    const replays = log.filter((l) => l.replayMs != null && l.replayMs < 10000).length;
+    return [
+      ['Nuits', log.length],
+      ['Tombées<small>cible 15 à 40 %</small>', log.length ? `${busts} · ${pct(busts, log.length)}` : '0'],
+      ['Score moyen', log.length ? Math.round(log.reduce((s, l) => s + l.score, 0) / log.length) : 0],
+      ['Meilleur score', profile.best || 0],
+      ['Étoiles médianes en gardant', median(kept.map((l) => l.stars.reduce((a, b) => a + b, 0))) ?? 0],
+      ['Nuits gardées nommant un dieu<small>cible 25 à 45 %</small>', pct(kept.filter((l) => l.gods.length).length, kept.length)],
+      ['Hésitation face cachée<small>doit dépasser nettement la pose</small>', secs(hidden)],
+      ['Hésitation à la pose', secs(place)],
+      ['Hésitation sans passe', secs(noPass)],
+      ['Relances spontanées<small>Rejouer en moins de 10 s</small>', log.length ? `${replays} · ${pct(replays, log.length)}` : '0'],
+      ['Dieux nommés', `${Object.keys(profile.gods).length} / ${E.GODS.length}`],
+      ['XP', profile.xp],
+    ];
+  }
+  function showTab(name) {
+    state.tab = name;
+    for (const b of $('tabs').querySelectorAll('button')) b.setAttribute('aria-selected', String(b.dataset.tab === name));
+    for (const t of ['pantheon', 'stats', 'reglages']) $('tab-' + t).hidden = t !== name;
+    if (name === 'pantheon') renderPantheon();
+    if (name === 'stats') $('stats').innerHTML = computeStats().map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
+  }
+  let resetArmed = null;
+  function disarmReset() { if (resetArmed) clearTimeout(resetArmed); resetArmed = null; $('reset').textContent = 'Effacer la sauvegarde'; }
+  function openSheet() {
+    $('opt-aid').checked = !!settings.aidButtons; $('opt-ring').checked = !!settings.holdRing; $('opt-sound').checked = settings.sound === true;
+    $('export-msg').textContent = ''; $('reset-msg').textContent = ''; disarmReset();
+    sheet.hidden = false;
+    showTab(state.tab);
+  }
+  function closeSheet() { disarmReset(); sheet.hidden = true; render(); }
+  $('menu').addEventListener('click', openSheet);
+  $('close').addEventListener('click', closeSheet);
+  $('tabs').addEventListener('click', (e) => { const b = e.target.closest('button[data-tab]'); if (b) showTab(b.dataset.tab); });
+  $('opt-aid').addEventListener('change', (e) => { settings.aidButtons = e.target.checked; saveSettings(); });
+  $('opt-sound').addEventListener('change', (e) => { settings.sound = e.target.checked; saveSettings(); if (settings.sound) audio.play('flip'); });
+  $('opt-ring').addEventListener('change', (e) => { settings.holdRing = e.target.checked; saveSettings(); });
+  $('replay-tuto').addEventListener('click', () => { sheet.hidden = true; startNight({ tutorial: true }); });
+  $('export').addEventListener('click', async () => {
+    const json = state.exportJSON(), msg = $('export-msg');
+    try {
+      const file = new File([json], 'noctuaire.json', { type: 'application/json' });
+      if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: 'Noctuaire' }); msg.textContent = 'Partagé.'; return; }
+      await navigator.clipboard.writeText(json); msg.textContent = 'Copié dans le presse-papiers.';
+    } catch (e) { msg.textContent = 'Export impossible ici.'; }
+  });
+  $('reset').addEventListener('click', () => { // deux temps : armer (4 s), puis confirmer
+    if (!resetArmed) { resetArmed = setTimeout(disarmReset, 4000); $('reset').textContent = 'Confirmer l’effacement'; return; }
+    disarmReset();
+    store.clear(); location.replace(location.pathname);
+  });
+
+  // ---- taille de la carte : d'après l'espace réel du puits, moins la bande des repères Garder / Retourner
+  function fitCard() {
+    const h = well.clientHeight - 60, w = well.clientWidth;
+    if (h <= 0 || w <= 0) return;
+    const cw = Math.round(Math.max(110, Math.min(w * .56, 230, h / 1.5)));
+    document.documentElement.style.setProperty('--card-w', cw + 'px');
+  }
+  if (window.ResizeObserver) new ResizeObserver(fitCard).observe(well); else window.addEventListener('resize', fitCard);
+  window.addEventListener('resize', () => { if (!sheet.hidden && state.tab === 'pantheon') drawSky(); });
+  fitCard();
+
+  // ---- départ : première fois → apprentissage (sauf graine imposée) ; ?tuto=1 le force
+  startNight({ tutorial: params.get('tuto') === '1' || (!profile.tutorialDone && !state.seedOnce) });
+})();
+</script>
+</body>
+</html>
