@@ -1,0 +1,2197 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Noctuaire">
+<meta name="noctuaire-version" content="5610e05 2026-09-23T16:49:00+02:00">
+<meta name="theme-color" content="#0B0E14">
+<title>Noctuaire</title>
+<style>
+:root {
+  --night: #0B0E14; --panel: #131824; --panel-2: #1A2030;
+  --ink: #E8E9EE; --soft: #97A0B0; --faint: #4B5364; --line: #232A38; --line-2: #3A4356;
+  --gold: #D2A24C; --gold-soft: #8C6A2E; --gold-dim: rgba(210, 162, 76, .16);
+  --ivory: #F1ECDF; --danger: #C9574A;
+  --mono: "SF Mono", ui-monospace, Menlo, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Helvetica Neue", system-ui, sans-serif;
+  --sat: env(safe-area-inset-top, 0px); --sab: env(safe-area-inset-bottom, 0px); /* zones sûres iOS ; ?safe=1 les simule hors appareil */
+  --card-w: 200px; /* recalculée en JS d'après l'espace réel du puits (Safari avec barre, plein écran, consigne affichée) */
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html { height: 100%; }
+body {
+  margin: 0; height: 100%; color: var(--ink);
+  background: var(--night);
+  font: 15px/1.4 var(--sans); -webkit-font-smoothing: antialiased;
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+  overscroll-behavior: none; touch-action: none; overflow: hidden;
+}
+button { font: inherit; color: inherit; cursor: pointer; }
+button:active { opacity: .6; }
+#app {
+  height: 100%; height: 100dvh; display: grid; grid-template-rows: auto auto 1fr auto; gap: 10px;
+  padding: calc(var(--sat) + 8px) 12px 0; /* 8 px : la cible de 44 pt du menu (marge −8 px) affleure le bord sans le dépasser */
+  background: radial-gradient(120% 70% at 50% 28%, #121826 0%, var(--night) 62%);
+}
+
+/* ---- barre du haut (D45) : la progression à gauche, un vrai bouton Menu à droite ; plus de titre, le nom est à l'accueil.
+   Pendant la préparation, « ‹ Accueil » prend la place de la progression. */
+#head { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 14px; min-height: 44px; }
+#prog { display: flex; align-items: center; gap: 10px; min-width: 0; }
+#level { flex: none; font: 500 .78rem var(--mono); letter-spacing: .08em; color: var(--gold); }
+#xp { flex: 1; max-width: 140px; height: 2px; background: var(--line); border-radius: 1px; }
+#xp i { display: block; height: 100%; width: 0; background: var(--gold); transition: width .6s ease; }
+#menu, #back { min-height: 44px; display: inline-flex; align-items: center; gap: 8px; padding: 0 14px; border: 1px solid var(--line-2); border-radius: 999px; background: rgba(19, 24, 36, .7);
+  font: 500 .7rem var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--ink); }
+#back { justify-self: start; }
+#back[hidden], #prog[hidden] { display: none; }
+#menu .bars { display: inline-grid; gap: 3px; } /* trois traits dessinés : l'icône reste nette à toutes les tailles */
+#menu .bars i { display: block; width: 13px; height: 1.5px; border-radius: 1px; background: currentColor; }
+
+/* ---- rail : les 8 symboles ; sous chacun, une pastille par carte encore dans le paquet (rouges quand elles tuent) */
+#rail { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; }
+.sym { border: 1px solid var(--line); border-radius: 6px; padding: 6px 5px 6px; text-align: center; line-height: 1.1; transition: background .2s, border-color .2s; }
+.sym b { display: block; font: 600 .74rem var(--mono); letter-spacing: .06em; }
+.sym .pips { display: flex; gap: 2px; height: 3px; margin-top: 6px; }
+.sym .pips s { flex: 1; border-radius: 1px; background: var(--soft); text-decoration: none; }
+.sym .pips s.gone { background: var(--line); }
+.sym.taken { background: var(--gold); border-color: var(--gold); color: #1A1408; } /* pris partout : chaque carte restante tue */
+.sym.taken .pips s { background: #8E1B10; }
+.sym.taken .pips s.gone { background: rgba(26, 20, 8, .22); }
+/* pris d'un seul côté : la moitié correspondante s'allume — l'autre côté reste ouvert, et fait la paire */
+.sym.half-l, .sym.half-r { border-color: var(--gold-soft); }
+.sym.half-l { background: linear-gradient(90deg, var(--gold-dim) 50%, transparent 50%); }
+.sym.half-r { background: linear-gradient(270deg, var(--gold-dim) 50%, transparent 50%); }
+.sym.half-l b, .sym.half-r b { color: var(--gold); }
+.sym.flash { background: #A8392C; border-color: #A8392C; color: #fff; } /* rouge assez profond pour que le blanc passe 6,4:1 */
+.sym.flash .pips s { background: rgba(255, 255, 255, .92); }
+.sym.flash .pips s.gone { background: rgba(255, 255, 255, .25); }
+
+/* ---- scène : les deux autels tiennent les côtés (on pose à gauche et à droite, on le voit), la carte est
+   au centre, la défausse est en bas (on passe vers le bas, la carte y tombe). Les quatre axes deviennent
+   quatre destinations visibles. La fin de nuit se pose par-dessus. */
+#stage { position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-rows: auto 1fr auto; column-gap: 8px; row-gap: 4px; align-items: stretch; min-height: 0; }
+#consigne { grid-column: 1 / -1; grid-row: 1; max-width: 32ch; margin: 0 auto; text-align: center; color: var(--ivory); font-size: .92rem; line-height: 1.32; min-height: 2.6em; display: grid; align-items: center; }
+#consigne[hidden] { display: none; }
+#well { grid-column: 2; grid-row: 2; position: relative; display: grid; place-items: center; min-height: 0; }
+#aid { grid-column: 1 / -1; grid-row: 3; display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; padding-bottom: 4px; }
+#aid[hidden] { display: none; }
+
+.cue { position: absolute; margin: 0; font: 500 .7rem var(--mono); letter-spacing: .18em; text-transform: uppercase; color: var(--soft); opacity: .72; transition: color .15s, opacity .15s; pointer-events: none; white-space: nowrap; }
+.cue.on { color: var(--gold); opacity: 1; }
+.cue.up { top: 2px; left: 50%; transform: translateX(-50%); }
+.cue.down { bottom: 2px; left: 50%; transform: translateX(-50%); }
+/* « Poser » se tient au milieu de la gouttière, entre les paliers de l'autel (ils finissent ≈ 10 px dans le puits)
+   et le bord de la carte : collé au bord du puits, il tombait sur le ×2, toujours à mi-hauteur. −1,5 px = 5 − 6,5,
+   la demi-largeur du repère ; fitBoard garantit la place (voir la largeur de carte). */
+.cue.left { left: calc(25% - var(--card-w) / 4 - 1.5px); top: 50%; writing-mode: vertical-rl; transform: translateY(-50%) rotate(180deg); }
+.cue.right { right: calc(25% - var(--card-w) / 4 - 1.5px); top: 50%; writing-mode: vertical-rl; transform: translateY(-50%); }
+.cue[hidden] { display: none; }
+
+#card { position: relative; width: var(--card-w); aspect-ratio: 2 / 3; will-change: transform; transition: width .2s; }
+#card .inner { position: absolute; inset: 0; transform-style: preserve-3d; transition: transform 340ms cubic-bezier(.2, .7, .2, 1); }
+#card.up .inner { transform: rotateY(180deg); }
+.face { position: absolute; inset: 0; border-radius: 14px; } /* pas de backface-visibility : la bascule de visibilité ci-dessous suffit et rend pareil partout */
+.face.back { background-color: #131824; background-image:
+    radial-gradient(70% 50% at 50% 42%, rgba(210, 162, 76, .10), transparent 70%),
+    linear-gradient(160deg, #1E2536, #10141E 60%, #0E121B);
+  box-shadow: inset 0 0 0 1px var(--line), inset 0 0 0 7px #0B0E14, inset 0 0 0 8px rgba(210, 162, 76, .32), 0 10px 26px rgba(0, 0, 0, .45); }
+.face.back::before { content: ""; position: absolute; inset: 14px; border: 1px solid rgba(210, 162, 76, .14); border-radius: 4px; }
+.face.back::after { content: ""; position: absolute; left: 50%; top: 50%; width: 30%; aspect-ratio: 1; transform: translate(-50%, -50%) rotate(45deg);
+  border: 1px solid var(--gold); opacity: .6; box-shadow: 0 0 18px rgba(210, 162, 76, .25), inset 0 0 12px rgba(210, 162, 76, .14); }
+.face.front { color: var(--night); transform: rotateY(180deg); display: grid; place-items: center;
+  background-color: var(--ivory);
+  background-image: radial-gradient(120% 90% at 30% 12%, #FFFCF4, rgba(241, 236, 223, 0) 55%), linear-gradient(170deg, rgba(255, 252, 244, .6), rgba(228, 222, 205, .55));
+  box-shadow: 0 14px 34px rgba(0, 0, 0, .5), inset 0 0 0 1px rgba(20, 18, 14, .10); }
+.face.front::after { content: ""; position: absolute; inset: 9px; border: 1px solid rgba(20, 18, 14, .13); border-radius: 7px; }
+.face.front, #card.up .face.back { visibility: hidden; transition: visibility 0s 170ms; } /* les faces s'échangent à mi-retournement */
+#card.up .face.front { visibility: visible; }
+#card.snap .inner, #card.snap .face { transition: none !important; } /* nouvelle carte : pas de retournement, donc pas de délai */
+.face.front .name { position: absolute; top: 12px; left: 14px; font: 600 .8rem/1.2 var(--mono); letter-spacing: .12em; }
+.face.front .name small { display: block; margin-top: 2px; font-size: .7rem; letter-spacing: .1em; color: #63605A; } /* le code du rail et de l'autel, pour l'apprendre */
+.face.front .val { font: 300 4.6rem/1 var(--sans); font-style: normal; letter-spacing: -.04em; color: #14120E; }
+.face.front .pipline { position: absolute; bottom: 12px; left: 0; right: 0; display: flex; justify-content: center; gap: 4px; }
+.face.front .pipline s { width: 5px; height: 5px; border-radius: 50%; background: #14120E; opacity: .18; text-decoration: none; }
+.face.front .pipline s.on { opacity: .8; }
+/* anneau de maintien (réglage) : se remplit en 600 ms, puis garde */
+#card.ring::before { content: ""; position: absolute; inset: -10px; border-radius: 22px; background: conic-gradient(var(--gold) var(--ring, 0deg), transparent 0);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px)); mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px)); }
+
+#aid button, #sheet button { min-height: 44px; background: transparent; border: 1px solid var(--line-2); border-radius: 999px; padding: 8px 16px; font: 500 .7rem var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--ink); }
+#aid button:disabled { opacity: .3; }
+
+/* ---- autel : une colonne par côté, qui se remplit du bas vers le haut ; le palier est écrit sur la place
+   qui le déclenche (4, 6, 8). L'autel du Crépuscule existe dès le niveau 1, verrouillé : on voit ce qu'on gagnera. */
+.altar { grid-row: 2; align-self: center; display: flex; flex-direction: column; gap: 6px; width: var(--altar-w, 58px); }
+.altar[data-altar="0"] { grid-column: 1; }
+.altar[data-altar="1"], #altar-locked { grid-column: 3; }
+.stars { display: flex; flex-direction: column-reverse; gap: 3px; } /* la première place est en bas : l'autel monte */
+.star { position: relative; z-index: 0; height: var(--slot-h, 30px); border-radius: 5px; border: 1px dashed var(--line); display: flex; align-items: center; justify-content: center; gap: 4px; line-height: 1; transition: transform .25s, opacity .25s; }
+.star.on { border: 1px solid var(--line-2); background: var(--panel); }
+.star.on b { font: 600 .7rem/1 var(--mono); letter-spacing: 0; color: var(--soft); }
+.star.on i { font: 500 .95rem/1 var(--sans); font-style: normal; }
+.star.big { border-color: var(--gold-soft); background: var(--panel-2); } /* les trois plus fortes : plus marquées */
+.star.big i { font-size: 1.15rem; color: var(--ivory); }
+/* une paire : le même symbole des deux côtés, les deux étoiles doublent */
+.star.pair { border-color: var(--gold); background: var(--gold-dim); }
+.star.pair i { color: var(--gold); }
+.star.pair::before { content: ""; position: absolute; top: 50%; width: 7px; height: 1px; background: var(--gold); opacity: .7; }
+.altar[data-altar="0"] .star.pair::before { left: 100%; }
+.altar[data-altar="1"] .star.pair::before { right: 100%; }
+.star.fallen { opacity: .18; transform: translateX(-6px); }
+/* le palier : un vrai élément (et non un ::after) pour que les tests mesurent qu'aucun repère ne le chevauche */
+.mark { position: absolute; top: 50%; transform: translateY(-50%); font: 600 .7rem/1 var(--mono); color: #5B6476; transition: color .3s; pointer-events: none; }
+.altar[data-altar="0"] .mark { left: calc(100% + 5px); }
+.altar[data-altar="1"] .mark { right: calc(100% + 5px); }
+.mark.reached { color: var(--gold-soft); }
+.mark.current { color: var(--gold); }
+#stage.over .mark { visibility: hidden; } /* nuit finie : les paliers ne servent plus, et le panneau de fin les couvrirait à moitié */
+.tally { display: flex; flex-direction: column; align-items: center; gap: 3px; padding-top: 2px; border-top: 1px solid var(--line); }
+.tally .sum { font: 500 1.25rem/1 var(--sans); letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.tally .mult { font: 600 .7rem/1 var(--mono); letter-spacing: .06em; padding: 4px 7px; border-radius: 999px; border: 1px solid var(--line-2); color: var(--soft); transition: color .3s, border-color .3s, background .3s; }
+.tally .mult.up { border-color: var(--gold); color: var(--gold); background: var(--gold-dim); } /* multiplicateur en cours, mis en valeur dès ×2 */
+.altar.ruin .sum { color: var(--danger); }
+/* l'autel à venir : la place est tenue, le niveau qui l'ouvre est écrit dessus */
+#altar-locked { grid-row: 2; align-self: center; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 10px;
+  width: var(--altar-w, 58px); height: var(--altar-h, 280px); border: 1px dashed var(--line); border-radius: 8px; color: var(--soft); padding: 10px 2px; }
+#altar-locked[hidden] { display: none; }
+#altar-locked b { writing-mode: vertical-rl; font: 600 .7rem/1 var(--mono); letter-spacing: .18em; text-transform: uppercase; color: var(--soft); }
+#altar-locked span { font: 600 .7rem/1.2 var(--mono); letter-spacing: .04em; text-align: center; }
+#altar-locked.deny { animation: denyPulse .5s ease-out; }
+@keyframes denyPulse { 0% { border-color: var(--line); } 35% { border-color: var(--gold); color: var(--gold); } 100% { border-color: var(--line); } }
+
+/* ---- défausse : ce que coûtent les passes, en bas, là où le geste envoie la carte */
+#tray { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px;
+  margin: 0 -12px; padding: 8px 18px calc(var(--sab) + 8px); border-top: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(19, 24, 36, .9), #0D1017); }
+#tray .bloc { display: flex; flex-direction: column; align-items: center; gap: 5px; }
+#tray .label { font: 500 .7rem/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--soft); }
+#passes { display: flex; gap: 7px; height: 30px; align-items: center; }
+#passes span { width: 9px; height: 9px; border-radius: 50%; border: 1px solid var(--soft); transition: background .3s, border-color .3s, opacity .3s; }
+#passes span.on { background: var(--soft); }
+#passes span.off { border-color: var(--faint); opacity: .5; }
+#discard { position: relative; width: 44px; height: 30px; border-radius: 5px; border: 1px dashed var(--line); display: grid; place-items: center;
+  font: 600 .8rem/1 var(--mono); color: var(--soft); }
+#discard.has { border-style: solid; border-color: var(--line-2); background: var(--panel); color: var(--soft); }
+
+/* ---- fin de nuit */
+/* sans fond : la carte est déjà partie quand ce panneau paraît, il n'a rien à cacher (un fond opaque dessinait un
+   rectangle sombre entre les deux colonnes, un halo laissait un contour à sa lisière) */
+#end { grid-column: 2; grid-row: 1 / -1; z-index: 3; display: grid; place-content: center; gap: 10px; padding: 0 6px; text-align: center; cursor: pointer; }
+#end[hidden] { display: none; }
+#end .kicker { font: 500 .74rem var(--mono); letter-spacing: .18em; text-transform: uppercase; color: var(--soft); }
+#end.bust .kicker { color: var(--danger); font-size: .95rem; line-height: 1.4; }
+#end .score { font: 500 5rem/1 var(--sans); letter-spacing: -.035em; font-variant-numeric: tabular-nums; }
+#end .sub { color: var(--soft); }
+#end .gods { color: var(--gold); font-size: 1.1rem; }
+#end .gods small { margin-left: 8px; font: 500 .7rem var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--soft); }
+#end .gain { margin: -2px auto 0; max-width: 32ch; color: var(--ivory); font-size: .9rem; line-height: 1.4; } /* ce que le rang nouveau apporte (D48) */
+#end .graze { font-size: .88rem; color: var(--soft); }
+#end .graze b { color: var(--gold); font-weight: 500; }
+#end .again { margin-top: 26px; font: 500 .74rem var(--mono); letter-spacing: .2em; text-transform: uppercase; color: var(--gold); }
+/* déblocage : le moment de la progression, encadré, jamais une ligne perdue */
+#end .unlock { margin: 14px auto 0; padding: 12px 16px; max-width: 30ch; border: 1px solid var(--gold-soft); border-radius: 10px; background: var(--gold-dim); }
+/* petit écran : la fin la plus chargée (un dieu renforcé, ce que son pouvoir devient, un palier) tient entre le rail et
+   les passes — le panneau, centré, débordait des deux côtés */
+@media (max-height: 620px) {
+  #end { gap: 6px; }
+  #end .score { font-size: 3.6rem; }
+  #end .again { margin-top: 12px; }
+  #end .unlock { margin-top: 6px; padding: 8px 12px; }
+}
+#end .unlock em { display: block; font: 500 .7rem var(--mono); font-style: normal; letter-spacing: .18em; text-transform: uppercase; color: var(--gold); margin-bottom: 5px; }
+#end .unlock span { color: var(--ivory); font-size: .95rem; }
+
+/* ---- Patron sur son autel : sa figure en tête de colonne ; elle s'allume quand le pouvoir agit */
+.plate { height: 44px; width: 100%; border: 1px solid var(--gold-soft); border-radius: 8px; background: var(--gold-dim); display: grid; place-items: center; padding: 0; color: var(--gold); }
+.plate.none { visibility: hidden; } /* l'autre autel garde la même hauteur : les places restent alignées */
+.plate svg { display: block; }
+.plate.used { opacity: .45; } /* Nanna : la vision de la nuit est prise */
+.plate.glow { animation: plateGlow .6s ease-out; }
+@keyframes plateGlow { 0% { box-shadow: 0 0 0 0 rgba(210, 162, 76, 0); } 30% { box-shadow: 0 0 0 4px rgba(210, 162, 76, .45); background: rgba(210, 162, 76, .32); } 100% { box-shadow: 0 0 0 0 rgba(210, 162, 76, 0); } }
+button.plate:disabled { cursor: default; }
+/* une étoile que le Patron de son autel fait valoir plus : un point d'or, et la valeur réelle */
+.star.boost::after { content: ""; position: absolute; top: 4px; right: 4px; width: 4px; height: 4px; border-radius: 50%; background: var(--gold); }
+.tally { position: relative; }
+.tally .bonus { position: absolute; right: 0; top: -7px; padding: 0 2px; background: var(--night); font: 600 .7rem/1 var(--mono); color: var(--gold); }
+/* rail : pris partout mais un Patron la défausserait — les pastilles ne sont pas rouges, elles ne tuent pas */
+.sym.taken.guarded .pips s { background: #6B5320; }
+/* la vision de Nanna : la carte se soulève et montre sa face, sans être retournée */
+#card.peek { transform: translateY(-12px) rotate(-2deg); transition: transform .2s; }
+#card.peek .inner { transform: rotateY(180deg); }
+#card.peek .face.front { visibility: visible; }
+#card.peek .face.back { visibility: hidden; }
+
+/* ---- accueil (D44) : le nom, ton ciel, ta progression, Jouer ; le panthéon et le Défi du jour en bas */
+#app.home { grid-template-rows: 1fr; }
+#app.home #head, #app.home #rail, #app.home #stage, #app.home #tray, #app.home #vestibule { display: none; }
+#home { position: relative; display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto auto; justify-items: center; gap: 18px; min-height: 0;
+  padding-bottom: calc(var(--sab) + 18px); }
+#home[hidden] { display: none; }
+#home-sky { position: absolute; inset: 0 -12px auto; width: calc(100% + 24px); height: 62%; pointer-events: none; }
+#home-settings { position: relative; justify-self: end; width: 44px; height: 44px; display: grid; place-items: center; padding: 0; border: 0; background: none; color: var(--soft); }
+#logo { position: relative; align-self: center; margin: 0; font: 300 1.55rem/1 var(--sans); letter-spacing: .42em; text-indent: .42em; color: var(--ivory); text-align: center; }
+.h-prog { position: relative; display: grid; justify-items: center; gap: 8px; width: min(78%, 280px); }
+#h-level { font: 500 .8rem var(--mono); letter-spacing: .12em; color: var(--gold); }
+.h-xp { width: 100%; height: 2px; background: var(--line); border-radius: 1px; }
+.h-xp i { display: block; height: 100%; width: 0; background: var(--gold); }
+#h-next { margin: 0; text-align: center; color: var(--soft); font-size: .86rem; line-height: 1.35; }
+#h-next b { color: var(--ivory); font-weight: 500; }
+#home-play { position: relative; min-width: 190px; min-height: 64px; padding: 0 30px; border: 1px solid var(--gold); border-radius: 999px; background: var(--gold-dim); color: var(--gold);
+  font: 500 .95rem var(--mono); letter-spacing: .34em; text-indent: .34em; text-transform: uppercase; }
+.h-links { position: relative; display: flex; gap: 12px; align-items: stretch; }
+.h-links button, .h-links .soon { min-height: 44px; min-width: 120px; padding: 6px 16px; border: 1px solid var(--line-2); border-radius: 12px; background: rgba(19, 24, 36, .7);
+  display: grid; place-content: center; font: 500 .7rem var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--ink); text-align: center; }
+.h-links .soon { border-style: dashed; color: var(--soft); }
+.h-links .soon small { display: block; margin-top: 3px; font: 500 .7rem var(--sans); letter-spacing: 0; text-transform: none; color: var(--soft); }
+/* la bulle d'un Gardien (D46) : on la demande en touchant sa plaque ; le jeu n'impose jamais de texte */
+#tip { position: fixed; z-index: 15; left: 0; top: 0; max-width: min(280px, calc(100vw - 24px)); padding: 12px 14px; border: 1px solid var(--gold-soft); border-radius: 12px;
+  background: #141A28; box-shadow: 0 12px 30px rgba(0, 0, 0, .5); color: var(--ivory); font-size: .9rem; line-height: 1.4; }
+#tip[hidden] { display: none; }
+#tip b { display: block; margin-bottom: 4px; font: 500 .7rem var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--gold); }
+#tip button { margin-top: 10px; min-height: 44px; padding: 0 16px; border: 1px solid var(--gold); border-radius: 999px; background: var(--gold-dim); color: var(--gold);
+  font: 500 .7rem var(--mono); letter-spacing: .14em; text-transform: uppercase; }
+
+/* ---- vestibule : on y pose ses Gardiens avant la nuit ; Rejouer n'y repasse pas (D42) */
+#app.vest { grid-template-rows: auto 1fr; }
+#app.vest #rail, #app.vest #stage, #app.vest #tray { display: none; }
+#vestibule { display: grid; grid-template-rows: minmax(0, 1fr) auto; gap: 12px; min-height: 0; padding-bottom: calc(var(--sab) + 12px); }
+#vestibule[hidden] { display: none; }
+.v-board { display: grid; grid-template-columns: 88px minmax(0, 1fr) 88px; column-gap: 8px; min-height: 0; }
+.v-altar { display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+.v-niche { position: relative; min-height: 84px; border: 1px dashed var(--line-2); border-radius: 12px; background: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 6px 2px; color: var(--soft); font: 500 .7rem/1.1 var(--sans); }
+.v-niche .empty { width: 34px; height: 34px; border-radius: 50%; border: 1px dashed var(--line-2); }
+.v-niche.filled { border-style: solid; border-color: var(--gold-soft); background: var(--gold-dim); color: var(--gold); }
+.v-niche.target { border-color: var(--gold); border-style: solid; }
+.v-niche.deny { animation: denyPulse .5s ease-out; }
+.v-column { flex: 1; min-height: 60px; border: 1px dashed var(--line); border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; }
+.v-column b { writing-mode: vertical-rl; font: 600 .7rem/1 var(--mono); letter-spacing: .18em; text-transform: uppercase; color: var(--soft); }
+.v-column span { font: 600 .7rem/1.2 var(--mono); letter-spacing: .04em; text-align: center; color: var(--soft); }
+.v-center { display: grid; place-items: center; }
+#play { max-width: 100%; min-height: 64px; padding: 0 18px; border: 1px solid var(--gold); border-radius: 999px; background: var(--gold-dim); color: var(--gold); font: 500 .8rem var(--mono); letter-spacing: .24em; text-transform: uppercase; } /* « Commencer » tient entre les deux niches, jusqu'au petit écran */
+.v-shelf { border-top: 1px solid var(--line); padding-top: 12px; }
+/* cinq médaillons par rangée, deux rangées visibles ; au-delà, on fait défiler, et un fondu le dit */
+#vgods { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 6px; max-height: 184px; padding-top: 6px; overflow-y: auto; touch-action: pan-y; } /* 6 px : le second filet d'un rang II ou III n'est pas rogné */
+#vgods.more { -webkit-mask-image: linear-gradient(180deg, #000 78%, transparent); mask-image: linear-gradient(180deg, #000 78%, transparent); }
+.medal { width: 64px; min-height: 84px; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 0; border: 0; background: none; touch-action: none; color: var(--ivory); }
+.medal .disc { width: 52px; height: 52px; border-radius: 50%; border: 1px solid var(--gold-soft); background: radial-gradient(60% 60% at 50% 40%, rgba(210, 162, 76, .16), rgba(19, 24, 36, .9)); display: grid; place-items: center; }
+.medal .who { font: 500 .7rem/1.15 var(--sans); text-align: center; white-space: nowrap; }
+.medal .who small { display: block; font: 500 .7rem var(--mono); color: var(--soft); }
+.medal.sel .disc { border-color: var(--gold); box-shadow: 0 0 0 3px var(--gold-dim); }
+.medal.placed .disc { border-style: dashed; opacity: .5; }
+/* le rang d'un dieu (D48) : le cerclage s'épaissit — un filet au rang I, deux au rang II, deux et un halo au rang III (et
+   au-delà : IV et V ne changent que le chiffre). Sur le médaillon, la niche et la plaque de la nuit. */
+.medal.r2 .disc, .medal.r3 .disc, .v-niche.filled.r2, .v-niche.filled.r3, .plate.r2, .plate.r3 { outline: 1px solid var(--gold-soft); outline-offset: 2px; }
+.medal.r3 .disc, .v-niche.filled.r3, .plate.r3 { box-shadow: 0 0 14px 2px rgba(210, 162, 76, .30); }
+.medal.sel.r2 .disc, .medal.sel.r3 .disc { outline-color: var(--gold); }
+.medal.sel.r2 .disc { box-shadow: none; }
+.medal.placed .disc { outline-style: dashed; }
+#vcaption { margin: 10px auto 0; max-width: 34ch; min-height: 2.8em; text-align: center; color: var(--soft); font-size: .88rem; line-height: 1.35; }
+#vcaption b { color: var(--gold); font-weight: 500; }
+#ghost { position: fixed; z-index: 30; left: 0; top: 0; pointer-events: none; }
+#ghost[hidden] { display: none; }
+/* le vestibule, à un geste : en retrait de Rejouer, qui reste l'action de la fin de nuit (D42) ; cible de 44 pt */
+#end .alt { min-height: 44px; min-width: 44px; padding: 0 14px; border: 0; background: none; justify-self: center; font: 500 .7rem var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--soft); text-decoration: underline; text-decoration-color: var(--line-2); text-underline-offset: 5px; }
+#end .saved { color: var(--ivory); }
+
+/* ---- théophanie : le dieu nommé, plein écran, avant le décompte */
+#theo { position: fixed; inset: 0; z-index: 20; display: grid; place-content: center; justify-items: center; gap: 18px; background: #07090D; }
+#theo[hidden] { display: none; }
+#theo .plate { position: relative; width: min(62vw, 260px); aspect-ratio: 2 / 3; border: 1px solid var(--gold-soft); border-radius: 14px; overflow: hidden; background: linear-gradient(170deg, #10151F, #0A0D13); }
+#theo .plate svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+#theo .plate .veil { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(210, 162, 76, .30), rgba(210, 162, 76, .04)); clip-path: inset(0 0 100% 0); }
+#theo .name { font: 500 2.1rem/1 var(--sans); letter-spacing: .04em; text-transform: uppercase; color: var(--gold); text-align: center; }
+#theo .trad { font: 500 .7rem var(--mono); letter-spacing: .2em; text-transform: uppercase; color: var(--soft); }
+
+/* ---- feuille : Panthéon, Stats, Réglages */
+#sheet { position: fixed; inset: 0; z-index: 10; overflow-y: auto; touch-action: pan-y; background: var(--night); padding: calc(var(--sat) + 10px) 18px calc(var(--sab) + 28px); }
+#sheet[hidden] { display: none; }
+#sheet header { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px 12px; margin-bottom: 14px; }
+#sheet header #tabs { grid-column: 1 / -1; grid-row: 2; }
+#to-home { justify-self: start; }
+#to-home[hidden] { display: none; }
+#tabs { display: flex; gap: 4px; }
+#tabs button { min-height: 44px; padding: 6px 12px; border: 0; background: none; border-radius: 8px; font: 500 .7rem var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--soft); }
+#tabs button[aria-selected="true"] { color: var(--gold); background: var(--gold-dim); }
+.tab[hidden] { display: none; }
+#sheet h2 { margin: 24px 0 10px; font: 500 .72rem var(--mono); letter-spacing: .2em; text-transform: uppercase; color: var(--gold); }
+#sheet h2:first-child { margin-top: 0; }
+#sheet dl { display: grid; grid-template-columns: 1fr auto; gap: 9px 12px; margin: 0 0 14px; align-items: baseline; }
+#sheet dt { color: var(--soft); }
+#sheet dt small { display: block; font: .7rem var(--mono); color: var(--soft); }
+#sheet dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+#sheet label { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); }
+#sheet label small { display: block; font-size: .78rem; color: var(--soft); }
+#sheet input[type="checkbox"] { width: 22px; height: 22px; accent-color: var(--gold); margin: 0; flex: none; }
+#sheet .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding: 12px 0; border-top: 1px solid var(--line); }
+#sheet .msg { font-size: .8rem; color: var(--soft); }
+#sheet button.danger { color: var(--danger); border-color: rgba(201, 87, 74, .5); }
+
+/* panthéon : un ciel par tradition, dessiné en Canvas ; fiche au tap */
+#trads { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+#trads button { min-height: 44px; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); background: none; font: 500 .7rem var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--soft); }
+#trads button[aria-selected="true"] { border-color: var(--gold); color: var(--gold); }
+#trads button.locked { color: var(--faint); border-style: dashed; }
+#count { margin-left: auto; font: 500 .72rem var(--mono); letter-spacing: .08em; color: var(--soft); }
+#sky { display: block; width: 100%; border: 1px solid var(--line); border-radius: 12px; background: #080A0F; touch-action: manipulation; }
+#godcard { margin-top: 12px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); min-height: 108px; }
+#godcard .who { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+#godcard .who b { font: 500 1.2rem var(--sans); letter-spacing: .02em; }
+#godcard.named .who b { color: var(--gold); }
+#godcard .who span { font: 500 .7rem var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--soft); }
+#godcard .sig { display: flex; gap: 6px; margin: 10px 0; }
+#godcard .sig i { font: 600 .7rem var(--mono); font-style: normal; letter-spacing: .06em; padding: 5px 8px; border-radius: 6px; border: 1px solid var(--line-2); color: var(--soft); }
+#godcard .sig i.on { border-color: var(--gold-soft); color: var(--gold); background: var(--gold-dim); }
+#godcard p { margin: 0; color: var(--ivory); font-size: .92rem; line-height: 1.45; }
+#godcard p.hint { color: var(--soft); }
+#godcard p.attr { margin-top: 8px; color: var(--soft); font-size: .86rem; }
+/* son pouvoir de Gardien, rang par rang (D48) : on ne le lit qu'une fois le dieu débloqué. Le rang atteint en or ; ceux
+   d'avant ont un chiffre cerclé d'or, ceux à venir un chiffre en pointillé. */
+#godcard .ranks { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 8px; }
+#godcard .ranks li { display: grid; grid-template-columns: 34px minmax(0, 1fr); column-gap: 10px; align-items: start; color: var(--soft); font-size: .88rem; line-height: 1.4; }
+#godcard .ranks i { font: 600 .7rem/1 var(--mono); font-style: normal; letter-spacing: .04em; text-align: center; padding: 4px 0; margin-top: 1px; border: 1px dashed var(--line-2); border-radius: 6px; color: var(--soft); }
+#godcard .ranks li.done i { border: 1px solid var(--gold-soft); color: var(--gold); }
+#godcard .ranks li.now { color: var(--gold); }
+#godcard .ranks li.now i { border: 1px solid var(--gold); background: var(--gold-dim); color: var(--gold); }
+#godcard p.next { margin-top: 8px; color: var(--soft); font-size: .84rem; }
+
+@media (prefers-reduced-motion: reduce) {
+  #card, #card .inner, #xp i, .sym, .star, #passes span, .cue, .tally .mult { transition: none; }
+  #altar-locked.deny { animation: none; }
+  #card .face { transition: none !important; } /* les règles des faces sont plus spécifiques (#card.up .face.back) : sans !important leur délai de 170 ms survit */
+}
+</style>
+</head>
+<body>
+<main id="app">
+  <header id="head">
+    <button id="back" hidden>‹ Accueil</button>
+    <div id="prog"><span id="level">Niveau 1</span><div id="xp"><i></i></div></div>
+    <button id="menu" aria-label="Menu : panthéon, stats, réglages, accueil"><span class="bars" aria-hidden="true"><i></i><i></i><i></i></span>Menu</button>
+  </header>
+  <section id="home" hidden aria-label="Accueil">
+    <canvas id="home-sky" aria-hidden="true"></canvas>
+    <button id="home-settings" aria-label="Réglages"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.8v2.6M12 18.6v2.6M21.2 12h-2.6M5.4 12H2.8M18.5 5.5l-1.8 1.8M7.3 16.7l-1.8 1.8M18.5 18.5l-1.8-1.8M7.3 7.3 5.5 5.5"/></svg></button>
+    <h1 id="logo">NOCTUAIRE</h1>
+    <div class="h-prog"><span id="h-level">Niveau 1</span><div class="h-xp"><i></i></div><p id="h-next"></p></div>
+    <button id="home-play">Jouer</button>
+    <nav class="h-links" aria-label="Accès"><button id="home-pantheon">Panthéon</button><span class="soon" aria-disabled="true">Défi du jour<small>bientôt</small></span></nav>
+  </section>
+  <section id="vestibule" hidden aria-label="Vestibule">
+    <div class="v-board">
+      <div class="v-altar" data-altar="0"></div>
+      <div class="v-center"><button id="play">Commencer</button></div>
+      <div class="v-altar" data-altar="1"></div>
+    </div>
+    <div class="v-shelf">
+      <div id="vgods" aria-label="Tes dieux"></div>
+      <p id="vcaption"></p>
+    </div>
+  </section>
+  <section id="rail" aria-label="Symboles"></section>
+  <section id="stage">
+    <p id="consigne" hidden></p>
+    <div class="altar" id="altar-0" data-altar="0" aria-label="Autel de l'Aube"></div>
+    <div id="well">
+      <div class="cue up" id="cue-up">Garder</div>
+      <div class="cue left" id="cue-left">Poser</div>
+      <div class="cue right" id="cue-right">Poser</div>
+      <div id="card" class="down" role="button" tabindex="0" aria-label="Carte">
+        <div class="inner">
+          <div class="face back"></div>
+          <div class="face front"><b class="name"></b><i class="val"></i><span class="pipline"></span></div>
+        </div>
+      </div>
+      <p id="hint" class="cue down"></p>
+    </div>
+    <div id="aid" hidden>
+      <button data-a="T">Retourner</button><button data-a="L">Poser</button><button data-a="D">Passer</button><button data-a="U">Garder</button>
+    </div>
+    <div class="altar" id="altar-1" data-altar="1" aria-label="Autel du Crépuscule" hidden></div>
+    <div id="altar-locked" hidden aria-label="Autel du Crépuscule, s'ouvre au niveau 3"><b>Crépuscule</b><span>NIV.<br>3</span></div>
+    <div id="end" hidden></div>
+  </section>
+  <section id="tray">
+    <div class="bloc"><div id="passes" aria-label="Passes"></div><span class="label">Passes</span></div>
+    <div class="bloc"><div id="discard" aria-label="Défausse">—</div><span class="label">Défausse</span></div>
+  </section>
+</main>
+
+<div id="ghost" hidden aria-hidden="true"></div>
+<div id="tip" hidden role="dialog" aria-live="polite"></div>
+
+<div id="theo" hidden>
+  <div class="plate"><svg id="theo-sky" viewBox="0 0 100 150" aria-hidden="true"></svg><div class="veil"></div></div>
+  <div class="name" id="theo-name"></div>
+  <div class="trad" id="theo-trad"></div>
+</div>
+
+<div id="sheet" hidden>
+  <header>
+    <button id="to-home">‹ Accueil</button>
+    <div id="tabs" role="tablist">
+      <button data-tab="pantheon" role="tab" aria-selected="true">Panthéon</button>
+      <button data-tab="stats" role="tab" aria-selected="false">Stats</button>
+      <button data-tab="reglages" role="tab" aria-selected="false">Réglages</button>
+    </div>
+    <button id="close">Fermer</button>
+  </header>
+
+  <section id="tab-pantheon" class="tab">
+    <div id="trads"></div>
+    <canvas id="sky"></canvas>
+    <div id="godcard"></div>
+  </section>
+
+  <section id="tab-stats" class="tab" hidden>
+    <h2>Stats</h2>
+    <dl id="stats"></dl>
+    <div class="row"><button id="export">Exporter (JSON)</button><span class="msg" id="export-msg"></span></div>
+  </section>
+
+  <section id="tab-reglages" class="tab" hidden>
+    <h2>Réglages</h2>
+    <label><span>Sons <small>provisoires : synthétisés en attendant une vraie direction sonore</small></span><input type="checkbox" id="opt-sound"></label>
+    <label><span>Boutons de secours sous la carte</span><input type="checkbox" id="opt-aid"></label>
+    <label><span>Garder par appui long (anneau, 600 ms)</span><input type="checkbox" id="opt-ring"></label>
+    <div class="row"><button id="replay-tuto">Rejouer l'apprentissage</button><button id="replay-pair" hidden>Rejouer la leçon de la paire</button></div>
+    <div class="row"><button id="reset" class="danger">Effacer la sauvegarde</button><span class="msg" id="reset-msg"></span></div>
+    <p class="msg" id="version"></p>
+  </section>
+</div>
+
+<script>
+// Le moteur de référence (engine/engine.js) est inliné ici tel quel par web/build.js,
+// dans une portée de fonction : la page exécute exactement le fichier validé par npm test.
+window.NoctuaireEngine = (function () {
+  'use strict';
+  const module = { exports: {} };
+  
+'use strict';
+/**
+ * NOCTUAIRE — moteur de règles de référence (v3 : deux autels, quatre axes, Patrons, XP).
+ *
+ * Ce fichier EST la spécification exécutable. Toute implémentation (web, Swift) doit
+ * reproduire ses résultats sur engine/vectors.json. Aucune dépendance, aucun DOM.
+ *
+ * Vocabulaire code (le vocabulaire joueur est dans docs/SPEC-v3.md) :
+ *  - card   : { dom: 0..7, ec: 1..6 }                (symbole, valeur)
+ *  - altar  : { stars: [{dom, ec, ord}], taken: Set<dom>, patron: godName|null, flags }
+ *  - action : 'T' | 'U' | 'L' | 'R' | 'D' | 'V'
+ *      carte FACE CACHÉE : 'T' tirer (retourner, c'est l'engagement) · 'U' garder (clore la nuit)
+ *                          'V' la vision de Nanna (voir la carte sans s'engager ; elle compte : au rang II, la carte
+ *                          vue vaut double sur son autel, D48)
+ *      carte FACE VISIBLE : 'L' poser à gauche · 'R' poser à droite · 'D' passer (coûte une passe)
+ *    Règle cardinale (Flip 7) : on décide de continuer AVANT de voir la carte. Une carte retournée
+ *    doit être posée ou passée ; si son symbole est pris sur tous les autels et qu'il ne reste
+ *    aucune passe, elle fait tomber la nuit.
+ */
+
+// ---------------------------------------------------------------- données
+const DOMS = ['CIEL', 'MER', 'TERRE', 'FEU', 'GUERRE', 'AMOUR', 'MORT', 'SAVOIR'];
+const DOM_INDEX = Object.fromEntries(DOMS.map((d, i) => [d, i]));
+const ECLATS = [1, 2, 3, 4, 5, 6];
+
+const GODS = [
+  ['Ishtar', 'Mésopotamie', ['AMOUR', 'GUERRE', 'CIEL']],
+  ['Ereshkigal', 'Mésopotamie', ['MORT', 'TERRE', 'SAVOIR']],
+  ['Enki', 'Mésopotamie', ['MER', 'SAVOIR', 'TERRE']],
+  ['Nergal', 'Mésopotamie', ['MORT', 'GUERRE', 'FEU']],
+  ['Nanna', 'Mésopotamie', ['CIEL', 'MER', 'SAVOIR']],
+  ['Marduk', 'Mésopotamie', ['CIEL', 'GUERRE', 'SAVOIR']],
+  ['Aphrodite', 'Grèce', ['AMOUR', 'MER', 'FEU']],
+  ['Hadès', 'Grèce', ['MORT', 'TERRE', 'AMOUR']],
+  ['Athéna', 'Grèce', ['GUERRE', 'SAVOIR', 'FEU']],
+  ['Poséidon', 'Grèce', ['MER', 'TERRE', 'GUERRE']],
+  ['Héphaïstos', 'Grèce', ['FEU', 'TERRE', 'SAVOIR']],
+  ['Zeus', 'Grèce', ['CIEL', 'GUERRE', 'TERRE']],
+  ['Taranis', 'Gaule', ['CIEL', 'FEU', 'GUERRE']],
+  ['Epona', 'Gaule', ['TERRE', 'AMOUR', 'MER']],
+  ['Cernunnos', 'Gaule', ['TERRE', 'MORT', 'FEU']],
+  ['Lugus', 'Gaule', ['SAVOIR', 'FEU', 'CIEL']],
+  ['Sucellos', 'Gaule', ['MORT', 'FEU', 'MER']],
+  ['Belenos', 'Gaule', ['CIEL', 'AMOUR', 'MER']],
+].map(([name, trad, sig]) => ({ name, trad, sig: sig.slice().sort().join('|'), sigArr: sig }));
+const GOD_BY_NAME = Object.fromEntries(GODS.map(g => [g.name, g]));
+
+// Pouvoirs des Patrons : un par dieu (D41), en trois rangs (D48). Le pouvoir s'applique à l'autel où son dieu est posé.
+// `ranks[r - 1]` porte les paramètres du rang r et la phrase de la fiche (panthéon, préparation, bulle du Gardien). Le
+// rang d'un Patron est le niveau de son dieu (I à V, +1 à chaque déblocage), plafonné à III : IV et V ne changent que
+// l'apparence. À chaque rang, le même pouvoir grandit d'un cran, sans jamais rien retirer au rang d'avant. Chaque rang
+// est mesuré et borné par `npm run check` : un gain réel, qui laisse le risque entier (D9, D48). Hermès, qui n'est pas au
+// panthéon, a légué sa vision à Nanna.
+const PATRONS = {
+  // — Mésopotamie
+  Ishtar: { kind: 'plus', ranks: [
+    { doms: ['AMOUR', 'GUERRE'], plus: 1, text: 'AMOUR et GUERRE valent +1 sur son autel.' },
+    { doms: ['AMOUR', 'GUERRE'], plus: 2, text: 'AMOUR et GUERRE valent +2 sur son autel.' },
+    { doms: ['AMOUR', 'GUERRE', 'CIEL'], plus: 2, text: 'AMOUR, GUERRE et CIEL valent +2 sur son autel.' },
+  ] },
+  Ereshkigal: { kind: 'discardValue', ranks: [
+    { per: 1, text: 'Chaque carte passée vaut 1 sur son autel.' },
+    { per: 2, text: 'Chaque carte passée vaut 2 sur son autel.' },
+    { per: 3, text: 'Chaque carte passée vaut 3 sur son autel.' },
+  ] },
+  Enki: { kind: 'plus', ranks: [
+    { doms: ['MER', 'SAVOIR'], plus: 1, text: 'MER et SAVOIR valent +1 sur son autel.' },
+    { doms: ['MER', 'SAVOIR'], plus: 2, text: 'MER et SAVOIR valent +2 sur son autel.' },
+    { doms: ['MER', 'SAVOIR', 'TERRE'], plus: 2, text: 'MER, SAVOIR et TERRE valent +2 sur son autel.' },
+  ] },
+  Nergal: { kind: 'twice', ranks: [
+    { doms: ['FEU'], max: 2, text: 'FEU peut être posé deux fois sur son autel.' },
+    { doms: ['FEU', 'GUERRE'], max: 2, text: 'FEU et GUERRE peuvent être posés deux fois sur son autel.' },
+    { doms: ['FEU', 'GUERRE', 'MORT'], max: 2, text: 'FEU, GUERRE et MORT peuvent être posés deux fois sur son autel.' },
+  ] },
+  Nanna: { kind: 'peek', ranks: [
+    { uses: 1, bless: 1, text: 'Une fois par nuit, voir la carte cachée sans s’engager.' },
+    { uses: 1, bless: 2, text: 'Une fois par nuit, voir la carte cachée sans s’engager ; posée sur son autel, elle vaut double.' },
+    { uses: 1, bless: 3, text: 'Une fois par nuit, voir la carte cachée sans s’engager ; posée sur son autel, elle vaut triple.' },
+  ] },
+  Marduk: { kind: 'fromNth', ranks: [
+    { from: 6, plus: 1, text: 'Dès la sixième, chaque étoile de son autel vaut +1.' },
+    { from: 5, plus: 1, text: 'Dès la cinquième, chaque étoile de son autel vaut +1.' },
+    { from: 5, plus: 2, text: 'Dès la cinquième, chaque étoile de son autel vaut +2.' },
+  ] },
+  // — Grèce
+  Aphrodite: { kind: 'double', ranks: [
+    { doms: ['AMOUR'], times: 2, plus: 0, text: 'AMOUR vaut double sur son autel.' },
+    { doms: ['AMOUR'], times: 2, plus: 2, text: 'AMOUR vaut double sur son autel, plus 2.' },
+    { doms: ['AMOUR'], times: 3, plus: 2, text: 'AMOUR vaut triple sur son autel, plus 2.' },
+  ] },
+  Hadès: { kind: 'dupFree', ranks: [
+    { uses: 1, text: 'Le premier « déjà pris » posé sur son autel est défaussé sans coûter de passe.' },
+    { uses: 2, text: 'Les deux premiers « déjà pris » posés sur son autel sont défaussés sans coûter de passe.' },
+    { uses: 3, text: 'Les trois premiers « déjà pris » posés sur son autel sont défaussés sans coûter de passe.' },
+  ] },
+  Athéna: { kind: 'passValue', ranks: [
+    { per: 1, text: 'Chaque passe gardée vaut 1 sur son autel.' },
+    { per: 2, text: 'Chaque passe gardée vaut 2 sur son autel.' },
+    { per: 3, text: 'Chaque passe gardée vaut 3 sur son autel.' },
+  ] },
+  Poséidon: { kind: 'dupFreeSym', ranks: [
+    { doms: ['MER', 'TERRE'], uses: 1, text: 'Une fois par nuit, une seconde MER ou TERRE posée sur son autel est défaussée sans coûter de passe.' },
+    { doms: ['MER', 'TERRE'], uses: 2, text: 'Deux fois par nuit, une seconde MER ou TERRE posée sur son autel est défaussée sans coûter de passe.' },
+    { doms: ['MER', 'TERRE', 'GUERRE'], uses: 2, text: 'Deux fois par nuit, une seconde MER, TERRE ou GUERRE posée sur son autel est défaussée sans coûter de passe.' },
+  ] },
+  Héphaïstos: { kind: 'lowRaise', ranks: [
+    { upTo: 1, value: 3, text: 'Les 1 valent 3 sur son autel.' },
+    { upTo: 1, value: 4, text: 'Les 1 valent 4 sur son autel.' },
+    { upTo: 2, value: 4, text: 'Les 1 et les 2 valent 4 sur son autel.' },
+  ] },
+  Zeus: { kind: 'nthDouble', ranks: [
+    { ords: [5], times: 2, plus: 0, text: 'La sixième étoile de son autel vaut double.' },
+    { ords: [5], times: 2, plus: 2, text: 'La sixième étoile de son autel vaut double, plus 2.' },
+    { ords: [5], times: 3, plus: 2, text: 'La sixième étoile de son autel vaut triple, plus 2.' },
+  ] },
+  // — Gaule
+  Taranis: { kind: 'saveOther', ranks: [
+    { num: 0, den: 1, text: 'Si tout tombe sur son autel, l’autre autel garde ses points.' },
+    { num: 1, den: 4, text: 'Si tout tombe sur son autel, l’autre autel garde ses points, et le sien en garde le quart.' },
+    { num: 1, den: 3, text: 'Si tout tombe sur son autel, l’autre autel garde ses points, et le sien en garde le tiers.' },
+  ] },
+  Epona: { kind: 'earlyGuard', ranks: [
+    { below: 4, text: 'Tant que son autel a moins de quatre étoiles, un « déjà pris » y est défaussé sans coûter de passe.' },
+    { below: 5, text: 'Tant que son autel a moins de cinq étoiles, un « déjà pris » y est défaussé sans coûter de passe.' },
+    { below: 6, text: 'Tant que son autel a moins de six étoiles, un « déjà pris » y est défaussé sans coûter de passe.' },
+  ] },
+  Cernunnos: { kind: 'passAt', ranks: [
+    { at: [4], text: 'À la quatrième étoile de son autel, une passe revient.' },
+    { at: [4, 6], text: 'À la quatrième et à la sixième étoile de son autel, une passe revient.' },
+    { at: [3, 5, 7], text: 'À la troisième, à la cinquième et à la septième étoile de son autel, une passe revient.' },
+  ] },
+  Lugus: { kind: 'upgrade', ranks: [
+    { uses: 1, text: 'Une fois par nuit, une carte plus forte remplace sur son autel celle de son symbole.' },
+    { uses: 2, text: 'Deux fois par nuit, une carte plus forte remplace sur son autel celle de son symbole.' },
+    { uses: 3, text: 'Trois fois par nuit, une carte plus forte remplace sur son autel celle de son symbole.' },
+  ] },
+  Sucellos: { kind: 'halfOnBust', ranks: [
+    { num: 1, den: 2, names: false, text: 'Si tout tombe sur son autel, la nuit garde la moitié de ses points.' },
+    { num: 2, den: 3, names: false, text: 'Si tout tombe sur son autel, la nuit garde les deux tiers de ses points.' },
+    { num: 2, den: 3, names: true, text: 'Si tout tombe sur son autel, la nuit garde les deux tiers de ses points, et peut encore débloquer un dieu.' },
+  ] },
+  Belenos: { kind: 'strongest', ranks: [
+    { count: 1, plus: 2, text: 'La plus forte étoile de son autel vaut +2.' },
+    { count: 2, plus: 2, text: 'Les deux plus fortes étoiles de son autel valent +2.' },
+    { count: 3, plus: 2, text: 'Les trois plus fortes étoiles de son autel valent +2.' },
+  ] },
+};
+const POWER_RANKS = 3;
+/** Le rang de pouvoir d'un dieu de niveau `lvl` (I à V) : I, II ou III. */
+function powerRank(lvl) { return Math.max(1, Math.min(POWER_RANKS, Math.floor(lvl) || 1)); }
+/** Le pouvoir d'un dieu à son niveau : sa nature, son rang, les paramètres et la phrase de ce rang (null s'il n'en a pas). */
+function power(name, lvl) {
+  const P = name && PATRONS[name];
+  if (!P) return null;
+  const rank = powerRank(lvl);
+  return Object.assign({ name, kind: P.kind, rank }, P.ranks[rank - 1]);
+}
+
+const TRAD_LEVEL = { 'Mésopotamie': 1, 'Grèce': 1, 'Gaule': 5, 'Japon': 10, 'Nordique': 20 };
+
+// Seuils de multiplicateur par autel : [nbEtoilesSurCetAutel, multiplicateur]
+const THRESHOLDS = {
+  nuit1: [[4, 2], [6, 3], [8, 5]],
+  orig:  [[5, 2], [7, 3], [9, 5]],
+};
+
+// Ascensions (0 = base). scoreMult s'applique à l'XP et au score affiché.
+const ASCENSIONS = [
+  { id: 0, name: 'Base',        passes: 3, scoreMult: 1.0, sameTraditionForbidden: false, targetMult: 1.0 },
+  { id: 1, name: 'Ascension I', passes: 2, scoreMult: 1.1, sameTraditionForbidden: false, targetMult: 1.0 },
+  { id: 2, name: 'Ascension II', passes: 2, scoreMult: 1.2, sameTraditionForbidden: false, targetMult: 1.25 },
+  { id: 3, name: 'Ascension III', passes: 2, scoreMult: 1.3, sameTraditionForbidden: true, targetMult: 1.25 },
+];
+
+// Progression : XP cumulée requise pour atteindre le niveau L (L>=2). Une seule constante à régler.
+const XP_BASE = 40, XP_EXP = 2.0;
+function xpForLevel(L) { return L <= 1 ? 0 : Math.round(XP_BASE * Math.pow(L, XP_EXP)); }
+function levelForXp(xp) { let L = 1; while (xp >= xpForLevel(L + 1)) L++; return L; }
+const UNLOCKS = {
+  1: 'Un autel, trois axes, trois passes. Mésopotamie et Grèce.',
+  2: 'Le premier Patron.',
+  3: 'Le second autel : quatrième axe et règle de la paire.',
+  4: 'Le Défi du jour.',
+  5: 'La Gaule (six dieux).',
+  6: 'La Veillée (trois nuits, Offrandes).',
+  7: 'Le second Patron.',
+  8: 'Ascension I.',
+  10: 'Le Japon.',
+  12: 'Cartes légendaires dans les Offrandes.',
+  15: 'Syncrétismes.',
+  20: 'Le Nordique.',
+  25: 'Lunaisons.',
+};
+function altarsForLevel(L) { return L >= 3 ? 2 : 1; }
+function patronSlotsForLevel(L) { return L >= 7 ? 2 : L >= 2 ? 1 : 0; }
+
+// ---------------------------------------------------------------- PRNG déterministe (à porter à l'identique)
+// hash53 : cyrb53 (Bryc), résultat 53 bits. On en garde les 32 bits bas comme graine.
+function hash53(str) {
+  let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+  for (let i = 0; i < str.length; i++) {
+    const c = str.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 2654435761);
+    h2 = Math.imul(h2 ^ c, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (h2 >>> 0) * 4294967296 + (h1 >>> 0);
+}
+function seed32(str) { return hash53(str) % 4294967296; }
+// mulberry32
+function rng(seed) {
+  let a = (seed >>> 0) || 1;
+  return function next() {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+// Paquet de 48 cartes, mélange Fisher–Yates avec le PRNG ci-dessus. Ordre initial : dom 0..7 × ec 1..6.
+function makeDeck(seedStr) {
+  const r = rng(seed32(seedStr));
+  const d = [];
+  for (let a = 0; a < DOMS.length; a++) for (const e of ECLATS) d.push({ dom: a, ec: e });
+  for (let i = d.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [d[i], d[j]] = [d[j], d[i]]; }
+  return d;
+}
+
+// ---------------------------------------------------------------- nuit
+/**
+ * newNight(opts)
+ *  seed        : string (graine du paquet)
+ *  altars      : 1 | 2
+ *  patrons     : [godName|null, godName|null]
+ *  ranks       : [niveau, niveau] du dieu de chaque Patron (I à V, 1 par défaut) : son pouvoir suit son rang (D48)
+ *  passes      : number (défaut selon ascension)
+ *  thresholds  : THRESHOLDS.nuit1 par défaut
+ *  ascension   : 0..3
+ *  level       : niveau du Tisseur (filtre les traditions reconnaissables)
+ */
+function newNight(opts) {
+  const asc = ASCENSIONS[opts.ascension || 0];
+  const nAlt = opts.altars || 1;
+  const patrons = (opts.patrons || [null, null]).slice(0, nAlt), ranks = opts.ranks || [];
+  if (asc.sameTraditionForbidden && patrons[0] && patrons[1] && GOD_BY_NAME[patrons[0]].trad === GOD_BY_NAME[patrons[1]].trad) {
+    throw new Error('Ascension III : deux Patrons de la même tradition sont interdits.');
+  }
+  const deck = makeDeck(opts.seed);
+  return {
+    seed: opts.seed, deck, idx: 0, level: opts.level || 1, ascension: asc.id,
+    thresholds: opts.thresholds || THRESHOLDS.nuit1,
+    passes: opts.passes != null ? opts.passes : asc.passes, discards: 0, // discards : cartes à la défausse (passes et défausses gratuites)
+    // power : le pouvoir du Patron à son rang, fixé pour la nuit ; freeUsed, upgradesUsed : ce qu'il a déjà servi
+    altars: Array.from({ length: nAlt }, (_, i) => ({ stars: [], taken: new Set(), patron: patrons[i] || null, power: power(patrons[i], ranks[i]), freeUsed: 0, upgradesUsed: 0 })),
+    peeksUsed: 0, seenIdx: -1, faceUp: false, remaining: Array(DOMS.length).fill(ECLATS.length),
+    over: false, result: null, log: [],
+  };
+}
+function current(n) { return n.deck[n.idx]; }
+function reveal(n) { // retourne la carte courante : met à jour le compteur du rail
+  if (n.idx < n.deck.length) { n.remaining[current(n).dom]--; n.faceUp = true; }
+}
+function patronOf(a) { return a.power || null; }
+function altarPatronKind(a) { const P = patronOf(a); return P ? P.kind : null; }
+
+/** Une carte de ce symbole peut-elle devenir une étoile de l'autel i ? Oui s'il n'y est pas — ou, chez Nergal, une seconde
+ *  FEU (GUERRE aussi au rang II, MORT au rang III). Un autel a huit places : plein, il ne prend plus rien (sans Nergal, huit
+ *  étoiles veulent dire huit symboles pris). */
+function placeable(n, i, dom) {
+  const a = n.altars[i];
+  if (a.stars.length >= DOMS.length) return false;
+  if (!a.taken.has(dom)) return true;
+  const P = patronOf(a);
+  return !!P && P.kind === 'twice' && P.doms.includes(DOMS[dom]) && a.stars.filter(s => s.dom === dom).length < P.max;
+}
+/** Une carte qui ne peut pas être posée sur l'autel i y serait-elle défaussée sans rien coûter, au lieu de tout faire tomber ? */
+function protects(n, i, dom) {
+  const a = n.altars[i], P = patronOf(a);
+  if (!P || placeable(n, i, dom)) return false;
+  if (P.kind === 'dupFree') return a.freeUsed < P.uses;                                  // Hadès : les premiers
+  if (P.kind === 'dupFreeSym') return a.freeUsed < P.uses && P.doms.includes(DOMS[dom]);  // Poséidon : ses symboles, par nuit
+  if (P.kind === 'earlyGuard') return a.stars.length < P.below;                          // Epona : avant sa quatrième (cinquième, sixième) étoile
+  return false;
+}
+/** Lugus : la carte c, déjà prise sur l'autel i, en remplacerait-elle l'étoile (plus forte, pouvoir encore disponible) ? */
+function upgrades(n, i, c) {
+  const a = n.altars[i], P = patronOf(a);
+  if (!P || P.kind !== 'upgrade' || a.upgradesUsed >= P.uses || !a.taken.has(c.dom)) return false;
+  return a.stars.find(s => s.dom === c.dom).ec < c.ec;
+}
+
+function mult(n, k) { let m = 1; for (const [s, x] of n.thresholds) if (k >= s) m = x; return m; }
+function nextThreshold(n, k) { for (const [s, x] of n.thresholds) if (k < s) return { at: s, mult: x }; return null; }
+
+/** Valeur d'une étoile : sa valeur imprimée, modifiée par le Patron de son autel comme sa phrase le dit (« double, plus 2 » :
+ *  on double, puis on ajoute), puis ×2 si son symbole est aussi sur l'autre autel (paire). */
+function starValue(n, altarIdx, star) {
+  const a = n.altars[altarIdx], P = patronOf(a), kind = P && P.kind, sym = DOMS[star.dom];
+  let v = star.ec;
+  if (kind === 'lowRaise' && v <= P.upTo) v = Math.max(v, P.value);              // Héphaïstos : les 1 (et les 2) montent
+  if (kind === 'plus' && P.doms.includes(sym)) v += P.plus;                      // Ishtar, Enki
+  if (kind === 'fromNth' && star.ord >= P.from - 1) v += P.plus;                 // Marduk : dès la sixième (la cinquième)
+  if (kind === 'strongest' && top3(a).slice(0, P.count).includes(star)) v += P.plus; // Belenos : les plus fortes (égalité : la première posée)
+  if (kind === 'double' && P.doms.includes(sym)) v = v * P.times + P.plus;       // Aphrodite : double (triple), puis ce qui s'ajoute
+  if (kind === 'nthDouble' && P.ords.includes(star.ord)) v = v * P.times + P.plus; // Zeus : la sixième
+  if (kind === 'peek' && star.seen) v *= P.bless;                                // Nanna : la carte qu'elle a montrée, posée chez elle
+  // paire : même symbole présent sur l'autre autel
+  if (n.altars.length === 2) {
+    const other = n.altars[1 - altarIdx];
+    if (other.taken.has(star.dom)) v *= 2;
+  }
+  return v;
+}
+/** Ce que les passes ajoutent à un autel qui a au moins une étoile : Ereshkigal les cartes passées, Athéna les passes gardées. */
+function passBonus(n, i) {
+  const a = n.altars[i], P = patronOf(a), kind = P && P.kind;
+  if (!a.stars.length) return 0;
+  return kind === 'discardValue' ? P.per * n.discards : kind === 'passValue' ? P.per * n.passes : 0;
+}
+function altarScore(n, i) {
+  const a = n.altars[i];
+  const sum = a.stars.reduce((s, st) => s + starValue(n, i, st), 0) + passBonus(n, i);
+  return sum * mult(n, a.stars.length);
+}
+function nightScoreRaw(n) { return n.altars.reduce((s, _, i) => s + altarScore(n, i), 0); }
+function applyAscension(n, raw) { return Math.round(raw * ASCENSIONS[n.ascension].scoreMult); }
+
+/** Les trois étoiles les plus fortes d'un autel (valeur brute ec, égalité → première posée). */
+function top3(a) { return a.stars.slice().sort((x, y) => y.ec - x.ec || x.ord - y.ord).slice(0, 3); }
+/** Les symboles des trois brillantes d'un autel, ou null si l'autel a moins de trois étoiles. */
+function brightDoms(a) { return a.stars.length < 3 ? null : top3(a).map(s => s.dom); }
+function recognize(n, i) {
+  const a = n.altars[i];
+  if (a.stars.length < 3) return null;
+  const sig = top3(a).map(s => DOMS[s.dom]).sort().join('|');
+  const g = GODS.find(g => g.sig === sig);
+  if (!g) return null;
+  if ((TRAD_LEVEL[g.trad] || 1) > n.level) return null; // tradition verrouillée
+  return g.name;
+}
+
+/**
+ * Frôlement (SPEC §6) : à la clôture d'une nuit qui n'a nommé aucun dieu, si deux des trois brillantes
+ * d'un autel appartiennent à la signature d'un dieu endormi, un de ses symboles se révèle dans le panthéon.
+ * Au plus un par nuit. Choix entièrement déterministe :
+ *   autels dans l'ordre (Aube puis Crépuscule) → dieux dans l'ordre de GODS → dieu non encore nommé,
+ *   tradition débloquée, intersection avec les brillantes exactement égale à 2 ; on révèle son symbole
+ *   manquant (celui qui n'était pas au rendez-vous) s'il n'est pas déjà révélé, sinon le premier non révélé.
+ * `brights` : result.brights (un tableau de 3 symboles, ou null, par autel).
+ * Retourne { god, dom } ou null. Ne modifie rien.
+ */
+function grazeFrom(brights, profile, level) {
+  const named = (profile && profile.gods) || {}, revealed = (profile && profile.revealed) || {};
+  for (const b of brights || []) {
+    if (!b || b.length < 3) continue;
+    for (const g of GODS) {
+      if (named[g.name]) continue;                          // déjà nommé : le dieu n'est plus endormi
+      if ((TRAD_LEVEL[g.trad] || 1) > level) continue;       // tradition verrouillée
+      const sig = g.sigArr.map(d => DOM_INDEX[d]);
+      const shared = sig.filter(d => b.includes(d));
+      if (shared.length !== 2) continue;                     // trois en commun = reconnaissance, pas frôlement
+      const already = revealed[g.name] || [];
+      const missing = sig.find(d => !b.includes(d));
+      const dom = already.includes(missing) ? sig.find(d => !already.includes(d)) : missing;
+      if (dom == null) continue;                             // tout est déjà révélé pour ce dieu
+      return { god: g.name, dom };
+    }
+  }
+  return null;
+}
+
+/** Cartes encore dans le paquet qui ne pourraient être posées nulle part (symbole pris sur tous les autels). Mesure
+ *  prudente : elle ignore les défausses gratuites des Patrons, qui ne servent qu'une fois ou sous condition. */
+function dangerCount(n) {
+  let c = 0;
+  for (let d = 0; d < DOMS.length; d++) if (n.altars.every((a, i) => !placeable(n, i, d))) c += n.remaining[d];
+  return c;
+}
+/** Ce symbole ferait-il tout tomber, où qu'on le pose ? (ni posable, ni défaussé gratuitement, sur aucun autel ;
+ *  Lugus compte à part : il dépend de la valeur, inconnue tant que la carte est cachée). C'est ce que dit le rail. */
+function deadly(n, dom) { return n.altars.every((a, i) => !placeable(n, i, dom) && !protects(n, i, dom)); }
+function legalActions(n) {
+  if (n.over) return [];
+  if (!n.faceUp) { const acts = ['T']; if (n.altars.some(a => a.stars.length > 0)) acts.push('U'); return acts; }
+  // Carte visible : poser (y compris sur un autel où le symbole est pris : c'est l'écroulement) ou passer.
+  const acts = n.altars.map((_, i) => (i === 0 ? 'L' : 'R'));
+  if (n.passes > 0) acts.push('D');
+  return acts;
+}
+/** Nanna : combien de visions restent cette nuit. */
+function peeksLeft(n) {
+  const P = n.altars.map(patronOf).find(p => p && p.kind === 'peek');
+  return P ? Math.max(0, P.uses - n.peeksUsed) : 0;
+}
+function peek(n) { // Nanna : voir la carte face cachée sans s'engager
+  if (!peeksLeft(n) || n.faceUp || n.idx >= n.deck.length) return null;
+  n.peeksUsed++; n.seenIdx = n.idx; return current(n);
+}
+
+function finish(n, kind, bustAltar) {
+  n.over = true;
+  let raw = 0, saved = null, halved = false, names = false;
+  if (kind === 'keep') raw = nightScoreRaw(n);
+  else if (kind === 'bust') {
+    const P = patronOf(n.altars[bustAltar]), pk = P && P.kind;
+    // Taranis : si l'autel qui tombe est le sien, l'autre autel est sauvé — et, aux rangs II et III, le quart puis le tiers du sien.
+    if (pk === 'saveOther' && n.altars.length === 2) { saved = 1 - bustAltar; raw = altarScore(n, saved) + Math.floor(altarScore(n, bustAltar) * P.num / P.den); }
+    // Sucellos : si l'autel qui tombe est le sien, la nuit garde une part de ce qu'elle valait (arrondie en dessous) ;
+    // au rang III, la chute peut encore nommer un dieu.
+    if (pk === 'halfOnBust') { halved = true; names = P.names; raw = Math.floor(nightScoreRaw(n) * P.num / P.den); }
+  }
+  const counts = kind === 'bust' && !names ? n.altars.map((_, i) => saved === i) : n.altars.map(() => true); // autels qui peuvent nommer ou frôler
+  const gods = n.altars.map((_, i) => (counts[i] ? recognize(n, i) : null));
+  const brights = n.altars.map((a, i) => (counts[i] ? brightDoms(a) : null));
+  n.result = { kind, score: applyAscension(n, raw), raw, gods, brights, stars: n.altars.map(a => a.stars.length), savedAltar: saved, halved, bustAltar: kind === 'bust' ? bustAltar : null };
+  return n.result;
+}
+
+/** La carte courante est consommée sans devenir une étoile (passe, défausse gratuite, remplacement) : on passe à la suivante. */
+function next(n, event, altar) {
+  n.idx++; n.faceUp = false;
+  if (n.idx >= n.deck.length) return { ok: true, event: 'deck-empty', result: finish(n, 'keep') };
+  return altar == null ? { ok: true, event } : { ok: true, event, altar };
+}
+
+/** Applique une action. Retourne { ok, event, result? }. Appeler reveal(n) après chaque carte consommée. */
+function act(n, action) {
+  if (n.over) return { ok: false, event: 'over' };
+  if (!n.faceUp) {
+    if (action === 'T') { reveal(n); n.log.push({ a: 'T', idx: n.idx }); return { ok: true, event: 'reveal', card: current(n) }; }
+    if (action === 'U') {
+      if (!n.altars.some(a => a.stars.length)) return { ok: false, event: 'nothing-to-keep' };
+      n.log.push({ a: 'U', idx: n.idx });
+      return { ok: true, event: 'keep', result: finish(n, 'keep') };
+    }
+    if (action === 'V') {
+      const seen = peek(n);
+      if (!seen) return { ok: false, event: 'no-vision' };
+      n.log.push({ a: 'V', idx: n.idx });
+      return { ok: true, event: 'vision', card: seen };
+    }
+    return { ok: false, event: 'face-down' };
+  }
+  if (action === 'U') return { ok: false, event: 'must-place-or-pass' };
+  if (action === 'T' || action === 'V') return { ok: false, event: 'already-revealed' };
+  const c = current(n);
+  if (action === 'D') {
+    if (n.passes <= 0) return { ok: false, event: 'no-pass' };
+    n.passes--; n.discards++; n.log.push({ a: 'D', idx: n.idx });
+    return next(n, 'pass');
+  }
+  const i = action === 'L' ? 0 : action === 'R' ? 1 : -1;
+  if (i < 0 || i >= n.altars.length) return { ok: false, event: 'no-such-altar' };
+  const a = n.altars[i];
+  n.log.push({ a: action, idx: n.idx });
+  if (!placeable(n, i, c.dom)) {
+    if (upgrades(n, i, c)) {         // Lugus : la plus forte prend la place de l'étoile, l'autre part à la défausse
+      a.upgradesUsed++; a.stars.find(s => s.dom === c.dom).ec = c.ec; n.discards++;
+      return next(n, 'upgrade', i);
+    }
+    if (protects(n, i, c.dom)) {     // Hadès, Poséidon, Epona : la carte part à la défausse sans coûter de passe
+      if (altarPatronKind(a) !== 'earlyGuard') a.freeUsed++;
+      n.discards++;
+      return next(n, 'free-discard', i);
+    }
+    return { ok: true, event: 'bust', result: finish(n, 'bust', i) };
+  }
+  const seen = altarPatronKind(a) === 'peek' && a.power.bless > 1 && n.seenIdx === n.idx; // Nanna : la carte qu'elle a montrée
+  a.taken.add(c.dom); a.stars.push(seen ? { dom: c.dom, ec: c.ec, ord: a.stars.length, seen: true } : { dom: c.dom, ec: c.ec, ord: a.stars.length }); n.idx++; n.faceUp = false;
+  if (altarPatronKind(a) === 'passAt' && a.power.at.includes(a.stars.length)) n.passes++; // Cernunnos : chaque place dite rend une passe
+  const full = n.altars.every(x => x.stars.length >= DOMS.length);
+  if (full || n.idx >= n.deck.length) return { ok: true, event: 'full', result: finish(n, 'keep') };
+  return { ok: true, event: 'placed', altar: i };
+}
+
+/** Démarre une nuit : la première carte est face cachée, le joueur doit la tirer ('T'). */
+function start(opts) { return newNight(opts); }
+
+// ---------------------------------------------------------------- profil / méta
+function newProfile() { return { xp: 0, gods: {}, revealed: {}, ascensionMax: 0, nights: 0 }; }
+function applyResult(profile, result) {
+  const before = levelForXp(profile.xp);
+  profile.xp += result.score; profile.nights++;
+  const named = [];
+  for (const g of result.gods) if (g) { const st = profile.gods[g] || (profile.gods[g] = { lvl: 0, best: 0 }); st.lvl = Math.min(5, st.lvl + 1); st.best = Math.max(st.best, result.score); named.push(g); }
+  // Frôlement : seulement si la nuit n'a nommé personne (SPEC §6). Le niveau qui compte est celui de la nuit jouée.
+  let graze = null;
+  if (!named.length) {
+    graze = grazeFrom(result.brights || [], profile, before);
+    if (graze) {
+      const rev = profile.revealed || (profile.revealed = {});
+      (rev[graze.god] || (rev[graze.god] = [])).push(graze.dom);
+    }
+  }
+  const after = levelForXp(profile.xp);
+  const unlocks = []; for (let L = before + 1; L <= after; L++) if (UNLOCKS[L]) unlocks.push({ level: L, text: UNLOCKS[L] });
+  return { before, after, unlocks, named, graze };
+}
+
+module.exports = {
+  DOMS, DOM_INDEX, ECLATS, GODS, GOD_BY_NAME, PATRONS, POWER_RANKS, powerRank, power, TRAD_LEVEL, THRESHOLDS, ASCENSIONS, UNLOCKS,
+  XP_BASE, XP_EXP, xpForLevel, levelForXp, altarsForLevel, patronSlotsForLevel,
+  hash53, seed32, rng, makeDeck,
+  newNight, start, reveal, current, act, peek, peeksLeft, legalActions, mult, nextThreshold, starValue, passBonus, altarScore, nightScoreRaw, top3, brightDoms, recognize, grazeFrom, dangerCount,
+  placeable, protects, upgrades, deadly,
+  newProfile, applyResult,
+};
+
+
+  return module.exports;
+})();
+</script>
+
+<script>
+(function () {
+  'use strict';
+  const E = window.NoctuaireEngine;
+  const $ = (id) => document.getElementById(id);
+  if (!E || typeof E.start !== 'function') { $('hint').textContent = 'Moteur absent : lancer npm run serve'; return; }
+
+  const SYM = E.DOMS.map((d) => d.slice(0, 2)); // CI ME TE FE GU AM MO SA
+  const KEY_PROFILE = 'noctuaire.v3.profile', KEY_SETTINGS = 'noctuaire.v3.settings';
+  const REDUCE = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  const ms = (x) => (REDUCE ? 0 : x);
+  const wait = (t) => new Promise((r) => setTimeout(r, ms(t)));
+  const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V'];
+
+  // Une ligne par dieu (SPEC §6) : lue dans la fiche du panthéon, jamais pendant une nuit.
+  const GOD_LINE = {
+    Ishtar: "Amour et guerre, l'étoile du matin qui descend aux enfers.",
+    Ereshkigal: 'Reine du pays sans retour. Assise, jamais debout.',
+    Enki: 'Seigneur des eaux douces, qui donne la ruse aux hommes.',
+    Nergal: 'Feu de midi, peste et guerre. Époux d’Ereshkigal.',
+    Nanna: 'La lune qui compte les mois et lit l’avenir.',
+    Marduk: 'Il fend Tiamat et bâtit le ciel de sa moitié.',
+    Aphrodite: 'Née de l’écume, elle allume ce qu’elle touche.',
+    'Hadès': 'Il garde les morts et la terre qui nourrit, et enleva Perséphone.',
+    'Athéna': 'Sortie armée du crâne de Zeus. Patronne des artisans.',
+    'Poséidon': 'La mer, le séisme, le cheval : tout ce qui ébranle la terre.',
+    'Héphaïstos': 'Le forgeron boiteux qui fait parler le métal.',
+    Zeus: 'La foudre en main, il règne sur la terre depuis le ciel.',
+    Taranis: 'La roue et la foudre. Le tonnerre des Gaules.',
+    Epona: 'La cavalière, protectrice des juments et des routes.',
+    Cernunnos: 'Le cornu, assis, entre la terre et l’hiver.',
+    Lugus: 'L’artisan aux mille talents, brillant comme le ciel.',
+    Sucellos: 'Le maillet et le tonneau. La mort douce et la vigne.',
+    Belenos: 'Le brillant, soleil guérisseur des sources.',
+  };
+
+  // ---------------------------------------------------------------- les dix-huit figures
+  // Chaque dieu a la forme de son attribut, dessinée en 5 à 9 étoiles reliées. Trois d'entre elles
+  // (`sig`) portent les symboles de sa signature : ce sont les brillantes, les plus grosses.
+  // Sources et arbitrages : docs/ICONOGRAPHIE.md. Coordonnées locales 0–1, y vers le bas.
+  const FIGURES = {
+    // — Mésopotamie ————————————————————————————————————————————————
+    Ishtar: { attr: 'l’étoile à huit branches', // kudurru de Meli-Shipak, Louvre Sb 22 (1186–1172 av. J.-C.)
+      pts: [[.50,.50],[.50,.02],[.71,.29],[.98,.50],[.71,.71],[.50,.98],[.29,.71],[.02,.50],[.29,.29]],
+      edges: [[0,1],[0,2],[0,3],[0,4],[0,5],[0,6],[0,7],[0,8]], sig: [1,3,5] },
+    Ereshkigal: { attr: 'les sept portes', // aucun attribut attesté : convention assumée, tirée de la Descente d'Ishtar
+      pts: [[.05,.06],[.05,.34],[.36,.34],[.36,.63],[.67,.63],[.67,.92],[.98,.92]],
+      edges: [[0,1],[1,2],[2,3],[3,4],[4,5],[5,6]], sig: [0,3,6] },
+    Enki: { attr: 'le poisson-chèvre', // suhurmāšu, emblème d'Ea sur les kudurrus ; sceau d'Adda, BM 89115
+      pts: [[.04,.08],[.11,.30],[.24,.20],[.46,.34],[.66,.52],[.84,.66],[.99,.46],[.99,.88]],
+      edges: [[0,1],[1,2],[2,3],[3,4],[4,5],[5,6],[5,7]], sig: [2,4,5] },
+    Nergal: { attr: 'la masse à tête de lion', // Oracc/Wiggermann ; kudurrus kassites
+      pts: [[.34,.97],[.44,.40],[.12,.40],[.76,.40],[.04,.08],[.84,.08]],
+      edges: [[0,1],[2,3],[2,4],[3,5]], sig: [0,4,5] },
+    Nanna: { attr: 'le croissant', // cornes vers le haut ; stèle d'Ur-Nammu, Penn Museum (~2100 av. J.-C.)
+      pts: [[.03,.20],[.15,.64],[.50,.86],[.85,.64],[.97,.20]],
+      edges: [[0,1],[1,2],[2,3],[3,4]], sig: [0,2,4] },
+    Marduk: { attr: 'la bêche marru', // Rittig ; kudurrus de Meli-Shipak, Louvre Sb 22 et Sb 23
+      pts: [[.40,.08],[.94,.22],[.40,.40],[.40,.90],[.16,.97],[.66,.97]],
+      edges: [[0,1],[1,2],[2,0],[0,3],[4,5],[3,4],[3,5]], sig: [0,1,3] },
+
+    // — Grèce ——————————————————————————————————————————————————————
+    Zeus: { attr: 'le foudre', // keraunos ailé, monnaies d'Élis (432–408 av. J.-C.)
+      pts: [[.50,.50],[.22,.50],[.78,.50],[.02,.24],[.02,.76],[.98,.24],[.98,.76],[.50,.16],[.50,.84]],
+      edges: [[1,0],[0,2],[1,3],[1,4],[2,5],[2,6],[0,7],[0,8]], sig: [0,3,6] },
+    'Poséidon': { attr: 'le trident', // statères de Poseidonia (~530–500 av. J.-C.)
+      pts: [[.12,.10],[.50,.02],[.88,.10],[.50,.34],[.50,.66],[.50,.98]],
+      edges: [[0,3],[1,3],[2,3],[3,4],[4,5]], sig: [0,1,2] },
+    'Athéna': { attr: 'la chouette', // chevêche du tétradrachme athénien (dès ~510 av. J.-C.)
+      pts: [[.24,.18],[.76,.18],[.50,.38],[.08,.58],[.92,.58],[.36,.94],[.64,.94]],
+      edges: [[0,2],[1,2],[0,3],[1,4],[3,5],[4,6],[5,6]], sig: [0,1,2] },
+    Aphrodite: { attr: 'la colombe', // Aphrodites chypriotes à la colombe (450–425 av. J.-C.)
+      pts: [[.12,.20],[.26,.34],[.50,.26],[.97,.44],[.54,.66],[.22,.52],[.44,.92]],
+      edges: [[0,1],[1,2],[2,3],[3,4],[4,5],[5,1],[4,6]], sig: [0,3,5] },
+    'Hadès': { attr: 'Cerbère', // hydrie cérétaine, Louvre E 701 (~530 av. J.-C.)
+      pts: [[.06,.12],[.02,.38],[.10,.64],[.32,.40],[.56,.32],[.78,.40],[.46,.86],[.96,.14]],
+      edges: [[0,3],[1,3],[2,3],[3,4],[4,5],[5,7],[3,6]], sig: [0,1,2] },
+    'Héphaïstos': { attr: 'les tenailles', // pyragra du forgeron ; série de la Naissance d'Athéna
+      pts: [[.10,.96],[.90,.96],[.50,.54],[.34,.12],[.66,.12],[.50,.02]],
+      edges: [[0,2],[2,4],[1,2],[2,3],[3,5],[4,5]], sig: [2,3,4] },
+
+    // — Gaule ——————————————————————————————————————————————————————
+    Taranis: { attr: 'la roue', // chaudron de Gundestrup ; statuette du Châtelet de Gourzon ; roues votives
+      pts: [[.50,.50],[.50,.03],[.91,.27],[.91,.73],[.50,.97],[.09,.73],[.09,.27]],
+      edges: [[1,2],[2,3],[3,4],[4,5],[5,6],[6,1],[0,1],[0,3],[0,5]], sig: [0,1,4] },
+    Epona: { attr: 'la jument', // statuaire gallo-romaine, Epona assise en amazone
+      pts: [[.04,.32],[.20,.18],[.40,.12],[.66,.16],[.88,.26],[.98,.50],[.78,.88],[.30,.90]],
+      edges: [[0,1],[1,2],[2,3],[3,4],[4,5],[4,6],[2,7]], sig: [0,4,7] },
+    Cernunnos: { attr: 'les bois de cerf', // chaudron de Gundestrup, plaque A ; pilier des Nautes, Paris
+      pts: [[.50,.96],[.30,.70],[.70,.70],[.16,.44],[.04,.12],[.36,.18],[.84,.44],[.96,.12],[.64,.18]],
+      edges: [[0,1],[0,2],[1,3],[3,4],[3,5],[2,6],[6,7],[6,8]], sig: [0,4,7] },
+    Lugus: { attr: 'le corbeau', // Lugoves ; association traditionnelle, iconographie gauloise incertaine
+      pts: [[.02,.24],[.22,.32],[.48,.22],[.64,.46],[.97,.62],[.52,.64],[.26,.50]],
+      edges: [[0,1],[1,2],[2,3],[3,4],[4,5],[5,6],[6,1]], sig: [0,3,4] },
+    Sucellos: { attr: 'le maillet', // ~200 monuments figurés : maillet à long manche et olla
+      pts: [[.46,.97],[.46,.34],[.14,.34],[.78,.34],[.78,.06],[.14,.06]],
+      edges: [[0,1],[2,3],[2,5],[5,4],[4,3]], sig: [0,4,5] },
+    Belenos: { attr: 'la source', // sanctuaires de sources ; aucun attribut figuré attesté, convention assumée
+      pts: [[.08,.74],[.50,.95],[.92,.74],[.24,.44],[.50,.30],[.76,.44],[.50,.03]],
+      edges: [[0,1],[1,2],[0,3],[1,4],[2,5],[4,6]], sig: [0,2,6] },
+  };
+  // Où chaque constellation se pose dans le ciel de sa tradition : grille de deux colonnes sur trois rangées,
+  // centre en fraction de la largeur/hauteur du ciel, taille en fraction de la largeur.
+  const PLACEMENT = { cols: [.27, .73], rows: [.17, .5, .83], size: .30 };
+  const SKY_ORDER = {
+    'Mésopotamie': ['Ishtar', 'Ereshkigal', 'Enki', 'Nergal', 'Nanna', 'Marduk'],
+    'Grèce': ['Aphrodite', 'Hadès', 'Athéna', 'Poséidon', 'Héphaïstos', 'Zeus'],
+    'Gaule': ['Taranis', 'Epona', 'Cernunnos', 'Lugus', 'Sucellos', 'Belenos'],
+  };
+  const TRADS = Object.keys(SKY_ORDER);
+  const GOD_BY_NAME = Object.fromEntries(E.GODS.map((g) => [g.name, g]));
+
+  // ---- stockage : localStorage, toujours en try/catch (navigation privée, quota, WebView)
+  const store = {
+    read(key, fallback) { try { const raw = localStorage.getItem(key); return raw ? Object.assign(fallback, JSON.parse(raw)) : fallback; } catch (e) { return fallback; } },
+    write(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { /* on joue sans sauvegarde */ } },
+    clear() { try { localStorage.removeItem(KEY_PROFILE); localStorage.removeItem(KEY_SETTINGS); } catch (e) { /* idem */ } },
+  };
+  const profile = store.read(KEY_PROFILE, Object.assign(E.newProfile(), { log: [], decisions: [], tutorialDone: false, best: 0 }));
+  if (!profile.revealed) profile.revealed = {};   // sauvegardes d'avant le frôlement
+  if (!profile.decisions) profile.decisions = []; // sauvegardes d'avant les métriques
+  if (!Array.isArray(profile.patrons)) profile.patrons = [null, null]; // sauvegardes d'avant les Patrons
+  const settings = store.read(KEY_SETTINGS, { aidButtons: false, holdRing: false, sound: false }); // son coupé par défaut : provisoire
+  const saveProfile = () => store.write(KEY_PROFILE, profile);
+  const saveSettings = () => store.write(KEY_SETTINGS, settings);
+
+  // ---- état de l'application
+  const params = new URLSearchParams(location.search);
+  if (params.get('safe') === '1') { document.documentElement.style.setProperty('--sat', '59px'); document.documentElement.style.setProperty('--sab', '34px'); } // cadre iPhone (Dynamic Island, indicateur) simulé hors appareil
+  const state = { profile, settings, night: null, last: null, tuto: null, tutoNext: null, busy: false, snapFace: false, levelShown: null, seedOnce: params.get('seed'),
+                  tReady: 0, endShownAt: 0, tab: 'pantheon', trad: TRADS[0], selected: null, hits: [],
+                  vest: false, home: false, vsel: null, tipFor: null, glow: new Set(), glows: [] };
+  state.exportJSON = () => JSON.stringify({ exportedAt: new Date().toISOString(), profile, settings }, null, 2);
+  window.__noctuaire = state; // lecture seule, pour les tests Playwright
+
+  const card = $('card'), front = card.querySelector('.front');
+  const stage = $('stage'), well = $('well'), hint = $('hint'), sheet = $('sheet');
+  const cues = { U: $('cue-up'), L: $('cue-left'), R: $('cue-right'), D: hint };
+
+  // ---- apprentissages : deux nuits scriptées, qui comptent comme les autres (D23). `expect` : le ou les gestes admis.
+  // La première (SPEC §12) au premier lancement, à un autel ; les brillantes GU5 TE4 CI3 nomment Zeus.
+  // La seconde (backlog 3.2) à la première nuit à deux autels : poser à droite, faire une paire, la voir doubler.
+  const LESSONS = {};
+  LESSONS.first = {
+    seed: 'apprentissage', done: 'tutorialDone', showNext: true, altars: 1, // la carte évitée est révélée à la fin (D23)
+    deck: [['TERRE', 4], ['CIEL', 3], ['TERRE', 2], ['GUERRE', 5], ['MER', 1], ['GUERRE', 6]],
+    steps: [
+      { expect: 'T', text: 'Tape la carte pour la retourner.' },
+      { expect: 'L', text: 'TERRE 4. Glisse vers la gauche pour la poser.' },
+      { expect: 'T', text: 'Au rail, TERRE est en or : ses cinq pastilles rouges sont les cartes TERRE encore dans le paquet, et chacune ferait tout tomber. Retourne la suivante.' },
+      { expect: 'L', text: 'CIEL 3. Pose-la.' },
+      { expect: 'T', text: 'Encore une.' },
+      { expect: 'D', text: 'TERRE est déjà pris : la poser ferait tout tomber. Glisse vers le bas pour passer.' },
+      { expect: 'T', text: 'Une passe de moins : les trois points au-dessus de la carte. Retourne.' },
+      { expect: 'L', text: 'GUERRE 5. Pose-la.' },
+      { expect: 'T', text: 'Retourne.' },
+      { expect: 'L', text: 'MER 1. Pose-la : à quatre étoiles, le total double.' },
+      { expect: 'U', text: 'Tu peux garder quand tu veux, avant de retourner. Glisse vers le haut pour garder.' },
+    ],
+  };
+  LESSONS.pair = {
+    seed: 'apprentissage|paire', done: 'pairLessonDone', showNext: false, altars: 2,
+    deck: [['FEU', 4], ['FEU', 3], ['GUERRE', 5]],
+    steps: [
+      { expect: 'T', text: 'Le Crépuscule est ouvert, à droite. Retourne la carte.' },
+      { expect: 'R', text: 'FEU 4. Glisse vers la droite pour la poser au Crépuscule.' },
+      { expect: 'T', text: 'Au rail, la moitié droite de FEU s’allume : pris au Crépuscule, libre à l’Aube. Retourne.' },
+      { expect: 'L', text: 'Encore FEU. Pose-la à gauche : le même symbole des deux côtés fait une paire, et les deux doublent.' },
+      { expect: 'T', text: '8 et 6 : la paire a doublé. Au rail, FEU est plein : pris des deux côtés, chaque FEU restante ferait tout tomber. Retourne.' },
+      { expect: 'LR', text: 'GUERRE 5. Pose-la où tu veux : l’autre côté restera libre pour une paire.' },
+      { expect: 'U', text: 'Deux autels, deux chances de débloquer un dieu. Glisse vers le haut pour garder.' },
+    ],
+  };
+  function installLesson(n, name) {
+    const lesson = LESSONS[name];
+    const first = lesson.deck.map(([d, e]) => ({ dom: E.DOM_INDEX[d], ec: e }));
+    n.deck = first.concat(n.deck.filter((c) => !first.some((f) => f.dom === c.dom && f.ec === c.ec))); // 48 cartes, la leçon d'abord : le rail reste juste
+    n.seed = lesson.seed;
+    state.tuto = { lesson: name, step: 0 };
+  }
+  const tutoStep = () => (state.tuto ? LESSONS[state.tuto.lesson].steps[state.tuto.step] : null);
+  state.lessonStep = tutoStep; // pour les tests : l'autopilote suit la consigne comme un joueur
+  /** La leçon que cette nuit doit jouer : celle qu'on demande, sinon la première jamais jouée. La leçon de la paire
+   *  attend le second autel (niveau 3) ; la première se joue toujours à un autel, même rejouée plus tard. */
+  function lessonFor(opts, L) {
+    const open = (name) => LESSONS[name].altars <= E.altarsForLevel(L);
+    if (opts.lesson) return open(opts.lesson) ? opts.lesson : null;
+    if (opts.seed || state.seedOnce) return null;                    // graine imposée : pas de leçon d'office
+    if (!profile.tutorialDone) return 'first';
+    if (open('pair') && !profile.pairLessonDone) return 'pair';      // la première nuit à deux autels
+    return null;
+  }
+
+  // ---- paliers (D47) : ce que chaque niveau ouvre vraiment dans ce proto. On n'annonce jamais ce qui n'existe pas
+  // encore (le Défi du jour, la Veillée, les Ascensions) : un palier sans nouveauté dit la prochaine.
+  const UNLOCK_TEXT = { 2: 'Le premier Gardien : un dieu débloqué veille sur ton autel.', 3: 'Le Crépuscule : un second autel, et la paire qui double.', 5: 'La Gaule : six dieux à découvrir.', 7: 'Le second Gardien : un dieu sur chaque autel.' };
+  const NEXT_TEXT = { 2: 'le premier Gardien', 3: 'le Crépuscule, un second autel', 5: 'la Gaule, six dieux', 7: 'le second Gardien' };
+  function nextUnlock(L) { const k = Object.keys(UNLOCK_TEXT).map(Number).find((x) => x > L); return k ? { level: k, text: NEXT_TEXT[k] } : null; }
+
+  // ---- Gardiens (le code dit « patron » ; D41, D42, D46) : un dieu débloqué, posé sur un autel à la préparation ; le choix se garde
+  const level = () => E.levelForXp(profile.xp);
+  const patronKind = (name) => (name && E.PATRONS[name] ? E.PATRONS[name].kind : null);
+  /** Le niveau d'un dieu débloqué (I à V) ; son pouvoir suit son rang, III au plus (D48). */
+  const godLvl = (g) => (g && profile.gods[g] ? profile.gods[g].lvl || 1 : 1);
+  /** Le cerclage de son rang : un filet (I), deux (II), deux et un halo (III et au-delà). */
+  const ringClass = (lvl) => (lvl >= 3 ? ' r3' : lvl === 2 ? ' r2' : '');
+  const nameLvl = (g, lvl = godLvl(g)) => g + (lvl > 1 ? ' ' + ROMAN[lvl] : '');
+  /** Les Patrons de la prochaine nuit : ceux du vestibule, s'ils sont nommés et si le niveau leur donne une place. */
+  function activePatrons(L = level()) {
+    const altars = E.altarsForLevel(L), slots = E.patronSlotsForLevel(L), out = [null, null];
+    let used = 0;
+    for (let i = 0; i < altars; i++) {
+      const g = profile.patrons[i];
+      if (g && profile.gods[g] && E.PATRONS[g] && used < slots && !out.includes(g)) { out[i] = g; used++; }
+    }
+    return out;
+  }
+
+  // ---- nuit
+  function freeSeed() { return 'libre|' + new Date().toISOString().slice(0, 10) + '|' + Math.random().toString(36).slice(2, 8); }
+  /** Fin de nuit : Rejouer enchaîne avec les mêmes Patrons (D42) — sauf quand une place de Patron vient de s'ouvrir. */
+  function replay() {
+    if (applyUpdate()) return; // entre deux nuits : la version en ligne, si elle a changé
+    if (state.last && state.last.slotOpened && !lessonFor({}, level())) { showVestibule(); return; }
+    startNight();
+  }
+  function startNight(opts = {}) {
+    const L = E.levelForXp(profile.xp);
+    const lesson = lessonFor(opts, L); // avant que la graine imposée ne soit consommée
+    closeTip();
+    state.home = false; $('app').classList.remove('home'); $('home').hidden = true;
+    state.vest = false; $('app').classList.remove('vest'); $('vestibule').hidden = true;
+    let seed = opts.seed;
+    if (!seed && state.seedOnce) { seed = state.seedOnce; state.seedOnce = null; } // graine imposée : une seule nuit
+    // relance spontanée : le protocole de test veut savoir si Rejouer part de lui-même (< 10 s)
+    if (state.endShownAt && profile.log.length) {
+      const last = profile.log[profile.log.length - 1];
+      if (last.replayMs == null) { last.replayMs = Math.round(performance.now() - state.endShownAt); saveProfile(); }
+    }
+    state.endShownAt = 0;
+    const patrons = lesson ? [null, null] : activePatrons(L);
+    state.night = E.start({ seed: seed || freeSeed(), altars: lesson ? LESSONS[lesson].altars : E.altarsForLevel(L), patrons, ranks: patrons.map(godLvl), level: L });
+    state.last = null; state.tuto = null; state.tutoNext = null; state.busy = false;
+    if (lesson) installLesson(state.night, lesson);
+    card.style.transform = ''; card.style.opacity = ''; card.classList.remove('peek'); state.snapFace = true;
+    state.tReady = performance.now();
+    render();
+    fitBoard(); // la plaque du Patron prend une rangée en tête des colonnes
+  }
+  /** Légal maintenant (moteur) et, pendant la leçon, demandé par la consigne. */
+  function allowed(a) {
+    const n = state.night;
+    if (!n || n.over || !E.legalActions(n).includes(a)) return false;
+    const st = tutoStep();
+    return !st || st.expect.includes(a); // 'LR' : poser d'un côté ou de l'autre
+  }
+  // Pendant une animation, toute entrée est ignorée : jamais de file d'attente, sinon deux gestes rapides
+  // poseraient une carte avant de l'avoir vue.
+  function request(action) {
+    if (!state.night || state.night.over || state.busy) return;
+    perform(action);
+  }
+  async function perform(action) {
+    const n = state.night;
+    if (!allowed(action)) { refuse(action); return; }
+    state.busy = true;
+    logDecision(action, n);
+    const multBefore = n.altars.map((a) => E.mult(n, a.stars.length));
+    const passesBefore = n.passes;
+    const c0 = n.faceUp ? E.current(n) : null; // la carte jouée (le moteur passe aussitôt à la suivante)
+    const r = E.act(n, action);
+    if (state.tuto) state.tuto.step++;
+    if (r.result) settle(r);
+    try { await animate(action, r, multBefore, c0, passesBefore); } catch (e) { /* une animation interrompue ne bloque jamais le jeu */ }
+    if (state.last && state.last.prog.named.length) { try { await theophany(state.last.prog.named); } catch (e) { /* idem */ } }
+    render();
+    for (const i of state.glow) glowPlate(i); // après le dernier rendu du geste : un rendu intermédiaire remplacerait la plaque
+    state.glow.clear();
+    state.tReady = performance.now();
+    state.busy = false;
+  }
+  /** Le pouvoir d'un Patron vient d'agir : sa plaque s'allume. `state.glows` en garde la trace pour les tests. */
+  function glowPlate(i) {
+    state.glows.push(i);
+    const p = document.querySelector(`.altar[data-altar="${i}"] .plate`);
+    if (!p) return;
+    p.classList.remove('glow'); void p.offsetWidth; p.classList.add('glow');
+  }
+  /** Une ligne par décision (SPEC §14) : ce qu'on cherche à mesurer, c'est l'hésitation face cachée. */
+  function logDecision(action, n) {
+    const remaining = n.deck.length - n.idx;
+    profile.decisions.push({
+      a: action,
+      ms: state.tReady ? Math.round(performance.now() - state.tReady) : null, // temps de réflexion depuis que l'écran était prêt
+      up: n.faceUp,                                                          // false = la décision qui compte (continuer ou garder)
+      stars: n.altars.reduce((s, a) => s + a.stars.length, 0),
+      passes: n.passes,
+      danger: remaining > 0 ? +(E.dangerCount(n) / remaining).toFixed(3) : 0,
+    });
+    if (profile.decisions.length > 3000) profile.decisions.splice(0, profile.decisions.length - 3000);
+  }
+  function settle(r) {
+    const n = state.night, res = r.result;
+    const bustDom = res.kind === 'bust' ? E.current(n).dom : null; // la carte fautive est encore la carte courante
+    // une leçon rejouée compte (D23), mais ne renforce pas un dieu déjà débloqué : sinon on monterait Zeus au rang III
+    // en rejouant l'apprentissage deux fois (D48)
+    const replayed = !!state.tuto && !!profile[LESSONS[state.tuto.lesson].done];
+    const known = replayed ? [...new Set(res.gods.filter((g) => g && profile.gods[g]))] : [];
+    const lvlBefore = Object.fromEntries(known.map((g) => [g, profile.gods[g].lvl]));
+    const prog = E.applyResult(profile, res);
+    for (const g of known) profile.gods[g].lvl = lvlBefore[g];
+    profile.best = Math.max(profile.best || 0, res.score);
+    profile.log.push({ d: new Date().toISOString(), seed: n.seed, kind: res.kind, stars: res.stars, score: res.score,
+                       gods: res.gods.filter(Boolean), graze: prog.graze ? prog.graze.god : null, level: prog.before, asc: n.ascension, replayMs: null,
+                       patrons: n.altars.map((a) => a.patron), ranks: n.altars.map((a) => (a.power ? a.power.rank : null)) }); // question 5 du protocole : le Gardien et son rang
+    if (profile.log.length > 500) profile.log.splice(0, profile.log.length - 500);
+    if (state.tuto) {
+      const lesson = LESSONS[state.tuto.lesson];
+      profile[lesson.done] = true;
+      if (lesson.showNext) state.tutoNext = n.idx < n.deck.length ? n.deck[n.idx] : null;
+    }
+    saveProfile();
+    const slotOpened = prog.unlocks.some((u) => E.patronSlotsForLevel(u.level) > E.patronSlotsForLevel(u.level - 1)); // niveaux 2 et 7
+    state.last = { result: res, prog, bustDom, slotOpened, rendered: false, known };
+  }
+
+  // ---- son : provisoire, coupé par défaut. Six sons synthétisés (Web Audio), aucun fichier ; le contexte
+  // audio naît au premier geste du joueur (règle iOS). Sera remplacé par une vraie direction sonore.
+  const audio = (() => {
+    let ctx = null, master = null;
+    const rnd = () => Math.random() * 2 - 1; // bruit blanc : hors moteur, hors graine
+    function ensure() {
+      if (settings.sound !== true) return null;
+      if (!ctx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return null;
+        ctx = new AC(); master = ctx.createGain(); master.gain.value = .55; master.connect(ctx.destination);
+      }
+      if (ctx.state !== 'running') ctx.resume().catch(() => {});
+      return ctx;
+    }
+    function tone(t, { freq, to = freq, type = 'sine', dur, gain = .3, attack = .003 }) {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = type; o.frequency.setValueAtTime(freq, t);
+      if (to !== freq) o.frequency.exponentialRampToValueAtTime(to, t + dur);
+      g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(gain, t + attack); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+      o.connect(g).connect(master); o.start(t); o.stop(t + dur + .02);
+    }
+    function noise(t, { dur, gain = .2, type = 'bandpass', freq = 1000, to = freq, q = 1 }) {
+      const len = Math.ceil(ctx.sampleRate * dur), buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) d[i] = rnd();
+      const src = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+      src.buffer = buf; f.type = type; f.Q.value = q; f.frequency.setValueAtTime(freq, t);
+      if (to !== freq) f.frequency.exponentialRampToValueAtTime(to, t + dur);
+      g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+      src.connect(f).connect(g).connect(master); src.start(t); src.stop(t + dur + .02);
+    }
+    const SOUNDS = {
+      flip:  (t) => { noise(t, { dur: .04, gain: .22, freq: 1800, q: 1.2 }); tone(t, { freq: 180, to: 120, dur: .06, gain: .16 }); },
+      place: (t, k = 0) => { noise(t, { dur: .02, gain: .28, type: 'lowpass', freq: 900 }); tone(t, { freq: 210 + 14 * k, to: 130 + 8 * k, type: 'triangle', dur: .16, gain: .34 }); },
+      pass:  (t) => { noise(t, { dur: .22, gain: .15, freq: 1200, to: 500, q: .8 }); },
+      keep:  (t) => { tone(t, { freq: 523.25, dur: .7, gain: .15 }); tone(t + .01, { freq: 784, dur: .55, gain: .07 }); tone(t, { freq: 261.6, dur: .5, gain: .1, type: 'triangle' }); },
+      tier:  (t) => { noise(t, { dur: .03, gain: .18, type: 'lowpass', freq: 600 }); tone(t, { freq: 330, dur: 1, gain: .2 }); tone(t, { freq: 660, dur: .7, gain: .07 }); tone(t, { freq: 990.5, dur: .5, gain: .035 }); },
+      theo:  (t) => { [523.25, 659.25, 783.99].forEach((f, i) => tone(t + i * .06, { freq: f, dur: 1.4 - i * .2, gain: .12 })); tone(t, { freq: 130.8, dur: 1.6, gain: .09, type: 'triangle' }); },
+      bust:  (t) => { noise(t, { dur: .75, gain: .32, type: 'lowpass', freq: 320, to: 110 }); [0, .07, .16, .28].forEach((d, i) => tone(t + d, { freq: 130 - i * 12, to: 70, type: 'triangle', dur: .18, gain: .28 })); },
+    };
+    const played = []; // trace pour les tests
+    function play(name, arg) { const c = ensure(); if (!c) return; try { SOUNDS[name](c.currentTime + .005, arg); played.push(name); } catch (e) { /* jamais bloquant */ } }
+    return { play, unlock: ensure, played, get ctx() { return ctx; } };
+  })();
+  state.audio = audio;
+
+  // ---- animations : tout est une propriété animée par le moteur du navigateur (Web Animations), rien d'importé
+  function anim(el, frames, duration, easing = 'ease-out', fill = 'none') {
+    const d = ms(duration);
+    if (!d || !el || !el.animate) return Promise.resolve();
+    const done = el.animate(frames, { duration: d, easing, fill }).finished.catch(() => {});
+    return Promise.race([done, new Promise((r) => setTimeout(r, d + 200))]); // jamais bloqué par une animation qui ne finit pas (onglet en arrière-plan, élément retiré)
+  }
+  function haptic(pattern) { try { if (navigator.vibrate) navigator.vibrate(pattern); } catch (e) { /* pas de vibreur */ } }
+  const currentTransform = () => card.style.transform || 'none';
+  function springBack() { const from = currentTransform(); card.style.transform = ''; return anim(card, [{ transform: from }, { transform: 'none' }], 260, 'cubic-bezier(.2,.9,.3,1.15)'); }
+  function refuse(dir) {
+    if (dir === 'R' && !$('altar-locked').hidden) { // le second autel n'est pas encore ouvert : c'est lui qui le dit
+      const lock = $('altar-locked');
+      lock.classList.remove('deny'); void lock.offsetWidth; lock.classList.add('deny');
+      setTimeout(() => lock.classList.remove('deny'), 600);
+    }
+    const from = currentTransform(); card.style.transform = '';
+    anim(card, [{ transform: from }, { transform: 'translateX(-8px)' }, { transform: 'translateX(8px)' }, { transform: 'translateX(-4px)' }, { transform: 'none' }], 320, 'ease-in-out');
+    if (state.tuto) anim($('consigne'), [{ transform: 'scale(1)', color: 'var(--ivory)' }, { transform: 'scale(1.06)', color: 'var(--gold)', offset: .3 }, { transform: 'scale(1)', color: 'var(--ivory)' }], 520, 'ease-out');
+    haptic(12);
+  }
+  function slotEl(altarIdx, k) { return document.querySelector(`.altar[data-altar="${altarIdx}"] .star:nth-child(${k + 1})`); }
+  /** La carte part de sa position courante (déjà déplacée par le doigt) vers une place de l'autel, puis disparaît. */
+  async function flyTo(target) {
+    const from = currentTransform(); card.style.transform = ''; card.style.opacity = '0';
+    const c = card.getBoundingClientRect(), t = target ? target.getBoundingClientRect() : c;
+    const dx = t.left + t.width / 2 - (c.left + c.width / 2), dy = t.top + t.height / 2 - (c.top + c.height / 2), s = Math.max(.12, t.width / c.width);
+    await anim(card, [{ transform: from, opacity: 1 }, { transform: `translate(${dx}px, ${dy}px) scale(${s})`, opacity: .92 }], 300, 'cubic-bezier(.3,.7,.2,1)');
+  }
+  async function enterNext() { // la carte suivante arrive, face cachée
+    state.snapFace = true; render();
+    card.style.opacity = '';
+    await anim(card, [{ opacity: 0, transform: 'scale(.94)' }, { opacity: 1, transform: 'none' }], 200);
+  }
+  /** Passer : la carte tombe dans la défausse, en bas — la destination du geste est visible. */
+  async function passAnim() {
+    const from = currentTransform(); card.style.transform = ''; card.style.opacity = '0';
+    const c = card.getBoundingClientRect(), t = $('discard').getBoundingClientRect();
+    const dx = t.left + t.width / 2 - (c.left + c.width / 2), dy = t.top + t.height / 2 - (c.top + c.height / 2);
+    await anim(card, [{ transform: from, opacity: 1 }, { transform: `translate(${dx.toFixed(0)}px, ${dy.toFixed(0)}px) scale(${Math.max(.18, t.width / c.width).toFixed(2)}) rotate(8deg)`, opacity: .5 }], 320, 'cubic-bezier(.4,0,.8,.6)');
+    anim($('discard'), [{ transform: 'scale(1)' }, { transform: 'scale(1.18)', offset: .4 }, { transform: 'scale(1)' }], 320);
+  }
+  async function keepAnim() {
+    const from = currentTransform(); card.style.transform = ''; card.style.opacity = '0';
+    await anim(card, [{ transform: from, opacity: 1 }, { transform: 'translateY(-40vh) scale(.9)', opacity: 0 }], 360, 'cubic-bezier(.3,.6,.2,1)');
+  }
+  async function bustSequence(altarIdx) {
+    const n = state.night, a = n.altars[altarIdx];
+    await flyTo(slotEl(altarIdx, a.stars.length)); // la carte s'abat sur la place suivante
+    const altarEl = document.querySelector(`.altar[data-altar="${altarIdx}"]`);
+    const cell = document.querySelector(`.sym[data-dom="${state.last.bustDom}"]`); if (cell) cell.classList.add('flash');
+    audio.play('bust'); haptic([30, 40, 60]);
+    await anim(altarEl, [{ transform: 'none' }, { transform: 'translateX(-9px)' }, { transform: 'translateX(9px)' }, { transform: 'translateX(-6px)' }, { transform: 'translateX(4px)' }, { transform: 'none' }], 380, 'ease-in-out');
+    const stars = altarEl ? [...altarEl.querySelectorAll('.star.on')] : [];
+    await Promise.all(stars.map((s, i) => anim(s, [{ transform: 'none', opacity: 1 }, { transform: `translateY(46px) rotate(${i % 2 ? 8 : -8}deg)`, opacity: 0 }], 420 + i * 40, 'cubic-bezier(.4,0,1,1)', 'forwards')));
+  }
+  /** Ereshkigal et Athéna : une carte part à la défausse, le total de leur autel bouge — leur plaque s'allume. */
+  function glowPassPatrons() {
+    state.night.altars.forEach((a, i) => { if (a.stars.length && ['discardValue', 'passValue'].includes(patronKind(a.patron))) state.glow.add(i); });
+  }
+  async function animate(action, r, multBefore, c0, passesBefore) {
+    const n = state.night;
+    if (action === 'T') { audio.play('flip'); render(); await wait(340); return; }
+    if (action === 'D') { glowPassPatrons(); audio.play('pass'); await passAnim(); if (!n.over) await enterNext(); return; }
+    if (action === 'U') { audio.play('keep'); await keepAnim(); return; }
+    // poser
+    if (r.event === 'bust') { await bustSequence(r.result.bustAltar); return; }
+    const i = action === 'R' ? 1 : 0, a = n.altars[i];
+    if (r.event === 'free-discard') { // Hadès, Poséidon, Epona : la carte tombe à la défausse, les passes restent
+      state.glow.add(i); glowPassPatrons(); await passAnim(); if (!n.over) await enterNext(); return;
+    }
+    if (r.event === 'upgrade') {      // Lugus : la carte plus forte prend la place de l'étoile de son symbole
+      state.glow.add(i); glowPassPatrons();
+      await flyTo(slotEl(i, a.stars.findIndex((s) => s.dom === c0.dom)));
+      audio.play('place', a.stars.length - 1);
+      if (!n.over) await enterNext();
+      return;
+    }
+    await flyTo(slotEl(i, a.stars.length - 1));
+    audio.play('place', a.stars.length - 1);
+    // le Patron de cet autel vient-il d'agir ? une valeur relevée, une seconde FEU, une passe rendue
+    const s = a.stars[a.stars.length - 1];
+    const paired = n.altars.length > 1 && n.altars[1 - i].taken.has(s.dom);
+    if (E.starValue(n, i, s) !== s.ec * (paired ? 2 : 1) || a.stars.filter((x) => x.dom === s.dom).length > 1) state.glow.add(i);
+    if (n.passes > passesBefore) { state.glow.add(i); anim($('passes'), [{ transform: 'scale(1)' }, { transform: 'scale(1.25)', offset: .35 }, { transform: 'scale(1)' }], 460); } // Cernunnos
+    if (n.over) return;
+    await enterNext();
+    if (E.mult(n, a.stars.length) !== multBefore[i]) { // le multiplicateur vient de changer : le sous-total pulse
+      const sum = document.querySelector(`.altar[data-altar="${i}"] .sum`), mult = document.querySelector(`.altar[data-altar="${i}"] .mult`);
+      anim(sum, [{ transform: 'scale(1)' }, { transform: 'scale(1.22)', color: 'var(--gold)', offset: .35 }, { transform: 'scale(1)' }], 460, 'ease-out');
+      anim(mult, [{ transform: 'scale(1)' }, { transform: 'scale(1.3)', offset: .35 }, { transform: 'scale(1)' }], 460, 'ease-out');
+      audio.play('tier'); haptic(20);
+    }
+  }
+  function countUp(el, to, duration) {
+    const d = ms(duration);
+    if (!d) { el.textContent = to; return; }
+    const t0 = performance.now();
+    (function step(t) { const k = Math.min(1, (t - t0) / d); el.textContent = Math.round(to * (1 - Math.pow(1 - k, 3))); if (k < 1) requestAnimationFrame(step); })(t0);
+  }
+
+  /** Théophanie : le ciel s'arrête, la constellation du dieu s'allume sous un voile d'or, son nom paraît,
+   *  puis la plaque s'envole vers l'accès au panthéon. Tout est dessiné et animé en code. */
+  async function theophany(names) {
+    const theo = $('theo'), plate = theo.querySelector('.plate'), veil = theo.querySelector('.veil');
+    for (const name of names) {
+      const g = GOD_BY_NAME[name], f = FIGURES[name];
+      // la figure est recadrée sur son propre englobant : elle occupe le cœur de la plaque
+      const xs = f.pts.map((p) => p[0]), ys = f.pts.map((p) => p[1]);
+      const w0 = Math.max(...xs) - Math.min(...xs), h0 = Math.max(...ys) - Math.min(...ys);
+      const k = Math.min(62 / Math.max(w0, .001), 96 / Math.max(h0, .001));
+      const ox = Math.min(...xs) + w0 / 2, oy = Math.min(...ys) + h0 / 2;
+      const pts = f.pts.map(([px, py]) => [50 + (px - ox) * k, 72 + (py - oy) * k]);
+      const lines = f.edges.map(([a, b]) => `<line x1="${pts[a][0].toFixed(1)}" y1="${pts[a][1].toFixed(1)}" x2="${pts[b][0].toFixed(1)}" y2="${pts[b][1].toFixed(1)}" stroke="#D2A24C" stroke-opacity=".45" stroke-width=".7"/>`).join('');
+      const dots = pts.map((p, i) => {
+        const sig = f.sig.includes(i);
+        return `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="${sig ? 2.6 : 1.4}" fill="${sig ? '#F1ECDF' : 'rgba(241,236,223,.55)'}"/>` +
+               (sig ? `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="6" fill="#D2A24C" fill-opacity=".16"/>` : '');
+      }).join('');
+      $('theo-sky').innerHTML = lines + dots;
+      $('theo-name').textContent = name.toUpperCase();
+      $('theo-trad').textContent = g.trad + ' · ' + f.attr;
+      theo.hidden = false;
+      audio.play('theo'); haptic([12, 60, 24]);
+      await wait(200);                                                        // le gel
+      veil.style.clipPath = 'inset(0 0 100% 0)';
+      await anim(veil, [{ clipPath: 'inset(0 0 100% 0)' }, { clipPath: 'inset(0 0 0% 0)' }], 600, 'cubic-bezier(.3,.7,.2,1)', 'forwards');
+      await Promise.all([
+        anim($('theo-name'), [{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }], 420),
+        anim(plate, [{ transform: 'scale(.98)' }, { transform: 'scale(1)' }], 420),
+      ]);
+      await wait(700);
+      const m = $('menu').getBoundingClientRect(), p = plate.getBoundingClientRect();
+      await anim(theo, [{ opacity: 1 }, { opacity: 0 }], 420, 'ease-in', 'forwards');
+      await anim(plate, [{ transform: 'none' }, { transform: `translate(${(m.left + m.width / 2 - p.left - p.width / 2).toFixed(0)}px, ${(m.top + m.height / 2 - p.top - p.height / 2).toFixed(0)}px) scale(.06)` }], 420, 'cubic-bezier(.4,0,.7,.6)');
+      theo.hidden = true; theo.style.opacity = ''; plate.style.transform = '';
+      if (theo.getAnimations) theo.getAnimations().forEach((a) => a.cancel());
+      if (plate.getAnimations) plate.getAnimations().forEach((a) => a.cancel());
+    }
+  }
+
+  // ---- rendu
+  /** La figure d'un dieu en SVG, recadrée sur son englobant : médaillons, niches et plaques. Les trois étoiles de sa
+   *  signature sont les plus grosses, comme au panthéon. */
+  function figureSVG(name, w, h, pad = 3) {
+    const f = FIGURES[name];
+    const xs = f.pts.map((p) => p[0]), ys = f.pts.map((p) => p[1]);
+    const x0 = Math.min(...xs), y0 = Math.min(...ys), w0 = Math.max(...xs) - x0 || .001, h0 = Math.max(...ys) - y0 || .001;
+    const k = Math.min((w - 2 * pad) / w0, (h - 2 * pad) / h0);
+    const P = f.pts.map(([x, y]) => [w / 2 + (x - x0 - w0 / 2) * k, h / 2 + (y - y0 - h0 / 2) * k]);
+    const lines = f.edges.map(([a, b]) => `<line x1="${P[a][0].toFixed(1)}" y1="${P[a][1].toFixed(1)}" x2="${P[b][0].toFixed(1)}" y2="${P[b][1].toFixed(1)}"/>`).join('');
+    const dots = P.map((p, i) => `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="${f.sig.includes(i) ? 2.1 : 1.1}"/>`).join('');
+    return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" aria-hidden="true"><g stroke="#D2A24C" stroke-opacity=".6" stroke-width=".8">${lines}</g><g fill="#F1ECDF">${dots}</g></svg>`;
+  }
+  function renderHead() {
+    const L = E.levelForXp(profile.xp), lo = E.xpForLevel(L), hi = E.xpForLevel(L + 1);
+    $('level').textContent = 'Niveau ' + L;
+    const bar = $('xp').firstElementChild;
+    if (state.levelShown !== null && state.levelShown !== L) { bar.style.transition = 'none'; bar.style.width = '0%'; void bar.offsetWidth; bar.style.transition = ''; } // changement de niveau : la barre repart de zéro
+    state.levelShown = L;
+    bar.style.width = Math.round(100 * (profile.xp - lo) / (hi - lo)) + '%';
+  }
+  function render() {
+    renderHead();
+    $('back').hidden = !state.vest; $('prog').hidden = !!state.vest; // préparation : « ‹ Accueil » à la place de la progression
+    if (state.home) { renderHome(); return; }
+    if (state.vest || !state.night) { renderVestibule(); return; }
+    const n = state.night;
+    const res = n.over && state.last ? state.last.result : null;
+    const bust = !!res && res.kind === 'bust';
+    stage.classList.toggle('over', !!n.over);
+
+    // rail : ce qu'une carte de chaque symbole ferait, compte tenu des Patrons (Nergal prend une seconde FEU, Hadès,
+    // Poséidon et Epona défaussent) — pris d'un côté, pris partout, et mortel seulement si rien ne la rattrape
+    $('rail').innerHTML = E.DOMS.map((d, i) => {
+      const blocked = n.altars.map((_, k) => !E.placeable(n, k, i));
+      const all = blocked.every(Boolean);
+      const guarded = all && !E.deadly(n, i);
+      const onL = blocked[0], onR = n.altars.length > 1 && blocked[1];
+      const half = !all && (onL ? ' half-l' : onR ? ' half-r' : '');
+      const flash = bust && state.last.bustDom === i;
+      const left = n.remaining[i];
+      const pips = E.ECLATS.map((_, k) => `<s class="${k < left ? '' : 'gone'}"></s>`).join('');
+      const etat = all ? (n.altars.length > 1 ? ', posé des deux côtés' : ', déjà posé') + (guarded ? ' : un Gardien la défausserait' : ' : chacune ferait tout tomber')
+        : onL ? ', posé à l’Aube : le Crépuscule ferait une paire'
+        : onR ? ', posé au Crépuscule : l’Aube ferait une paire' : '';
+      const label = `${d}, ${left} carte${left > 1 ? 's' : ''} dans le paquet${etat}`;
+      return `<div class="sym${all ? ' taken' : half}${guarded ? ' guarded' : ''}${flash ? ' flash' : ''}" data-dom="${i}" role="img" aria-label="${label}"><b>${SYM[i]}</b><i class="pips">${pips}</i></div>`;
+    }).join('');
+
+    const maxPasses = E.ASCENSIONS[n.ascension].passes;
+    $('passes').innerHTML = Array.from({ length: Math.max(n.passes, maxPasses) }, (_, i) => `<span class="${i < n.passes ? 'on' : 'off'}"></span>`).join('');
+    const passed = n.discards; // passes et défausses gratuites : tout ce qui est tombé en bas
+    const disc = $('discard');
+    disc.textContent = passed ? String(passed) : '—';
+    disc.classList.toggle('has', passed > 0);
+    disc.setAttribute('aria-label', passed ? `Défausse, ${passed} carte${passed > 1 ? 's' : ''} passée${passed > 1 ? 's' : ''}` : 'Défausse, vide');
+
+    const c = E.current(n), up = n.faceUp && !n.over;
+    if (state.snapFace) card.classList.add('snap');
+    card.classList.toggle('up', !!up); card.classList.toggle('down', !up);
+    if (up && c) showFace(c);
+    if (state.snapFace) { void card.offsetWidth; card.classList.remove('snap'); state.snapFace = false; }
+
+    for (const a of ['U', 'L', 'R', 'D']) cues[a].hidden = !allowed(a);
+    hint.hidden = false;
+    hint.textContent = n.over ? '' : (!n.faceUp ? (allowed('T') ? 'Retourner' : '') : (allowed('D') ? 'Passer' : ''));
+
+    const withPlates = n.altars.some((a) => a.patron);
+    for (let i = 0; i < 2; i++) {
+      const el = $('altar-' + i), a = n.altars[i];
+      el.hidden = !a;
+      if (!a) continue;
+      const fell = bust && res.savedAltar !== i; // Taranis garde l'autre autel debout
+      el.classList.toggle('ruin', bust && res.bustAltar === i);
+      const big = new Set(a.stars.length >= 3 ? E.top3(a).map((s) => s.ord) : []);
+      const m = E.mult(n, a.stars.length);
+      const slots = Array.from({ length: E.DOMS.length }, (_, k) => {
+        const th = n.thresholds.find(([at]) => at === k + 1);            // le palier est écrit sur la place qui le déclenche
+        const reach = th && a.stars.length >= th[0] ? (m === th[1] ? ' current' : ' reached') : '';
+        const mark = th ? `<span class="mark${reach}">×${th[1]}</span>` : '';
+        const s = a.stars[k];
+        if (!s) return `<div class="star">${mark}</div>`;
+        const other = n.altars[1 - i];
+        const paired = !!other && other.taken.has(s.dom);        // le même symbole de l'autre côté : la paire double
+        const shown = E.starValue(n, i, s);                      // on affiche ce que l'étoile vaut vraiment (D38), Patron compris
+        const boost = shown !== s.ec * (paired ? 2 : 1);         // le Patron de l'autel la fait valoir plus : un point d'or
+        const cls = ['on', big.has(s.ord) ? 'big' : '', paired ? 'pair' : '', boost ? 'boost' : '', fell ? 'fallen' : ''].filter(Boolean).join(' ');
+        return `<div class="star ${cls}"><b>${SYM[s.dom]}</b><i>${shown}</i>${mark}</div>`;
+      }).join('');
+      let plate = '';
+      if (withPlates) {
+        const P = a.power;
+        if (!P) plate = '<div class="plate none" aria-hidden="true"></div>';
+        else plate = `<button class="plate${ringClass(P.rank)}${P.kind === 'peek' && !E.peeksLeft(n) ? ' used' : ''}" data-plate="${i}" aria-label="Gardien : ${nameLvl(a.patron)}. Toucher pour lire son pouvoir">${figureSVG(a.patron, 40, 30)}</button>`;
+      }
+      const bonus = E.passBonus(n, i); // Ereshkigal, Athéna : ce que les passes ajoutent, compris dans le total
+      el.innerHTML = plate + `<div class="stars">${slots}</div>` +
+        `<div class="tally"><span class="sum">${fell ? 0 : E.altarScore(n, i)}</span>` +
+        (bonus && !fell ? `<span class="bonus" aria-label="dont ${bonus} pour les passes">+${bonus}</span>` : '') +
+        `<span class="mult${m > 1 ? ' up' : ''}" aria-label="multiplicateur ×${m}">×${m}</span></div>`;
+    }
+    $('altar-locked').hidden = n.altars.length > 1; // au niveau 1 et 2, la place du second autel est tenue
+
+    const st = tutoStep();
+    $('consigne').hidden = !st || n.over;
+    if (st) $('consigne').textContent = st.text;
+
+    const aid = $('aid');
+    aid.hidden = !settings.aidButtons || n.over;
+    aid.querySelectorAll('button').forEach((b) => { b.disabled = !allowed(b.dataset.a); });
+
+    renderEnd();
+  }
+  /** La face de la carte : son symbole en entier, son code, sa valeur. */
+  function showFace(c) {
+    front.querySelector('.name').innerHTML = `${E.DOMS[c.dom]}<small>${SYM[c.dom]}</small>`;
+    front.querySelector('.val').textContent = c.ec;
+    front.querySelector('.pipline').innerHTML = E.ECLATS.map((_, k) => `<s class="${k < c.ec ? 'on' : ''}"></s>`).join('');
+  }
+  const FRACTION = { '1/2': 'la moitié', '2/3': 'les deux tiers', '1/3': 'le tiers', '1/4': 'le quart' };
+  function renderEnd() {
+    const end = $('end'), n = state.night;
+    end.hidden = !n.over;
+    if (!n.over || !state.last || state.last.rendered) return;
+    state.last.rendered = true;
+    const { result, prog, bustDom } = state.last;
+    const gods = prog.named;
+    const alt = E.patronSlotsForLevel(level()) > 0 ? '<button class="alt" id="to-vest">Gardiens</button>' : ''; // la préparation, à un geste
+    // un palier franchi : ce qu'il ouvre vraiment, ou, s'il n'ouvre rien encore, le prochain (D47)
+    const real = prog.unlocks.find((u) => UNLOCK_TEXT[u.level]), nx = nextUnlock(prog.after);
+    const unlockBox = real ? `<div class="unlock"><em>Niveau ${real.level}</em><span>${UNLOCK_TEXT[real.level]}</span></div>`
+      : prog.after > prog.before ? `<div class="unlock"><em>Niveau ${prog.after}</em><span>${nx ? `Au niveau ${nx.level} : ${nx.text}.` : 'Tout est ouvert.'}</span></div>` : '';
+    const known = state.last.known || []; // une leçon rejouée : le dieu revient, sans se renforcer
+    const uniq = [...new Set(gods)].filter((g) => !known.includes(g));
+    const fresh = uniq.filter((g) => profile.gods[g].lvl === 1), again = uniq.filter((g) => profile.gods[g].lvl > 1);
+    const grown = again.filter((g) => profile.gods[g].lvl <= E.POWER_RANKS); // un rang II ou III : son pouvoir grandit (D48)
+    const tail = (fresh.length ? `<div class="gods">${fresh.join(', ')}<small>débloqué${fresh.length > 1 ? 's' : ''}</small></div>` : '') +
+      (again.length ? `<div class="gods">${again.map((g) => nameLvl(g)).join(', ')}<small>renforcé${again.length > 1 ? 's' : ''}</small></div>` : '') +
+      grown.map((g) => `<div class="gain">${grown.length > 1 ? `<b>${nameLvl(g)}</b> · ` : ''}${E.power(g, godLvl(g)).text}</div>`).join('') +
+      (known.length ? `<div class="gods">${known.join(', ')}<small>déjà débloqué${known.length > 1 ? 's' : ''}</small></div>` : '') +
+      (prog.graze ? `<div class="graze">Nouvel indice au panthéon : <b>${E.DOMS[prog.graze.dom]}</b></div>` : '') + unlockBox;
+    if (result.kind === 'bust') {
+      const où = n.altars.length > 1 ? (result.bustAltar === 0 ? ' à l’Aube' : ' au Crépuscule') : '';
+      const kicker = `<div class="kicker">${E.DOMS[bustDom]} était déjà pris${où}</div>`;
+      const patron = n.altars[result.bustAltar].patron, P = n.altars[result.bustAltar].power;
+      if (result.savedAltar != null || result.halved) { // Taranis ou Sucellos : la chute n'emporte pas tout
+        end.className = 'bust';
+        const part = P.num ? FRACTION[P.num + '/' + P.den] : '';
+        const why = result.savedAltar != null
+          ? `${patron} garde ${result.savedAltar === 0 ? 'l’Aube' : 'le Crépuscule'}${part ? ` et ${part} ${result.bustAltar === 0 ? 'de l’Aube' : 'du Crépuscule'}` : ''}`
+          : `${patron} garde ${part}`;
+        end.innerHTML = kicker + `<div class="score">0</div><div class="sub saved">${why}</div><div class="sub">+${result.score} XP</div>` + tail + `<div class="again">Rejouer</div>` + alt;
+        countUp(end.querySelector('.score'), result.score, 600);
+      } else {
+        end.className = 'bust';
+        end.innerHTML = kicker + `<div class="again">Rejouer</div>` + alt;
+      }
+    } else {
+      end.className = '';
+      end.innerHTML = `<div class="kicker">Nuit gardée</div><div class="score">0</div>` +
+        `<div class="sub">+${result.score} XP</div>` + tail +
+        (state.tutoNext ? `<div class="sub">La carte suivante était ${E.DOMS[state.tutoNext.dom]} ${state.tutoNext.ec}.</div>` : '') +
+        `<div class="again">Rejouer</div>` + alt;
+      countUp(end.querySelector('.score'), result.score, 600);
+    }
+    const box = end.querySelector('.unlock');
+    if (box) anim(box, [{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }], 420);
+    state.endShownAt = performance.now();
+    anim(end, [{ opacity: 0, transform: 'translateY(10px)' }, { opacity: 1, transform: 'none' }], 320);
+  }
+
+  // ---- vestibule (D42) : les dieux nommés en médaillons, qu'on glisse sur la niche en tête d'un autel ; Jouer
+  function showVestibule() {
+    closeTip();
+    state.home = false; $('app').classList.remove('home'); $('home').hidden = true;
+    state.vest = true; state.vsel = null;
+    $('app').classList.add('vest'); $('vestibule').hidden = false; $('end').hidden = true;
+    render();
+  }
+  /** L'accueil (D44) : le nom, ton ciel, ta progression et ce qui arrive ensuite, Jouer. */
+  function showHome() {
+    closeTip();
+    state.vest = false; $('app').classList.remove('vest'); $('vestibule').hidden = true;
+    state.home = true; state.vsel = null;
+    $('app').classList.add('home'); $('home').hidden = false; $('end').hidden = true;
+    render();
+  }
+  function renderHome() {
+    const L = level(), lo = E.xpForLevel(L), hi = E.xpForLevel(L + 1);
+    $('h-level').textContent = 'Niveau ' + L;
+    document.querySelector('.h-xp i').style.width = Math.round(100 * (profile.xp - lo) / (hi - lo)) + '%';
+    const nx = nextUnlock(L);
+    $('h-next').innerHTML = nx ? `Au niveau ${nx.level} : <b>${nx.text}</b>` : 'Tous les autels et tous les Gardiens sont ouverts.';
+    drawHomeSky();
+  }
+  /** Le ciel de l'accueil : un semis fixe, et tes dieux débloqués en or pâle autour du nom. */
+  function drawHomeSky() {
+    const cv = $('home-sky'), w = cv.clientWidth || 360, h = cv.clientHeight || 400, dpr = Math.min(window.devicePixelRatio || 1, 3);
+    cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+    const x = cv.getContext('2d');
+    if (!x) return;
+    x.setTransform(dpr, 0, 0, dpr, 0, 0); x.clearRect(0, 0, w, h);
+    const r = E.rng(E.seed32('accueil'));
+    for (let i = 0; i < 150; i++) {
+      const px = r() * w, py = r() * h, rad = .3 + r() * .8, a = (.06 + r() * .36) * (1 - (py / h) * .7);
+      x.beginPath(); x.arc(px, py, rad, 0, Math.PI * 2); x.fillStyle = `rgba(206, 218, 240, ${a.toFixed(3)})`; x.fill();
+    }
+    // une couronne autour du nom (qui tient le bas du ciel) : jamais sur le nom, jamais coupée par un bord
+    const SPOTS = [[.5, .14], [.2, .2], [.8, .2], [.33, .4], [.67, .4], [.1, .52], [.9, .52], [.12, .83], [.88, .83]];
+    const size = Math.min(w * .19, h * .2);
+    const c = cv.getBoundingClientRect(), l = $('logo').getBoundingClientRect(); // le nom, mesuré : aucune figure ne le touche
+    const logo = { x0: l.left - c.left - 10, x1: l.right - c.left + 10, y0: l.top - c.top - 10, y1: l.bottom - c.top + 10 };
+    TRADS.flatMap((t) => SKY_ORDER[t]).filter((g) => profile.gods[g]).slice(0, SPOTS.length).forEach((g, i) => {
+      const f = FIGURES[g];
+      const cx = Math.min(Math.max(SPOTS[i][0] * w, size / 2 + 4), w - size / 2 - 4);
+      let cy = Math.min(Math.max(SPOTS[i][1] * h, size / 2 + 4), h - size / 2 - 4);
+      if (cx + size / 2 > logo.x0 && cx - size / 2 < logo.x1 && cy + size / 2 > logo.y0 && cy - size / 2 < logo.y1) {
+        cy = cy < (logo.y0 + logo.y1) / 2 ? logo.y0 - size / 2 : Math.min(logo.y1 + size / 2, h - size / 2 - 4); // au-dessus ou au-dessous du nom
+      }
+      const pts = f.pts.map(([px, py]) => ({ x: cx + (px - .5) * size, y: cy + (py - .5) * size }));
+      x.beginPath(); for (const [a, b] of f.edges) { x.moveTo(pts[a].x, pts[a].y); x.lineTo(pts[b].x, pts[b].y); }
+      x.strokeStyle = 'rgba(210, 162, 76, .26)'; x.lineWidth = .8; x.stroke();
+      pts.forEach((p, k) => { const sig = f.sig.includes(k); x.beginPath(); x.arc(p.x, p.y, sig ? 1.6 : .9, 0, Math.PI * 2); x.fillStyle = `rgba(241, 236, 223, ${sig ? .7 : .32})`; x.fill(); });
+    });
+  }
+  $('home-play').addEventListener('click', () => { audio.unlock(); if (E.patronSlotsForLevel(level()) > 0) showVestibule(); else startNight(); });
+  $('home-pantheon').addEventListener('click', () => { state.tab = 'pantheon'; openSheet(); });
+  $('home-settings').addEventListener('click', () => { state.tab = 'reglages'; openSheet(); });
+  $('back').addEventListener('click', () => showHome());
+  function renderVestibule() {
+    if (!state.vest) return;
+    const L = level(), altars = E.altarsForLevel(L), slots = E.patronSlotsForLevel(L), P = activePatrons(L);
+    const named = TRADS.flatMap((t) => SKY_ORDER[t]).filter((g) => profile.gods[g] && E.PATRONS[g]);
+    for (let i = 0; i < 2; i++) {
+      const col = document.querySelector(`.v-altar[data-altar="${i}"]`), name = i === 0 ? 'Aube' : 'Crépuscule';
+      if (i >= altars) { col.innerHTML = `<div class="v-column" aria-label="Autel du Crépuscule, s’ouvre au niveau 3"><b>Crépuscule</b><span>NIV.<br>3</span></div>`; continue; }
+      const g = P[i];
+      const niche = g
+        ? `<button class="v-niche filled${ringClass(godLvl(g))}" data-altar="${i}" aria-label="${name} : ${nameLvl(g)}. Toucher pour le retirer">${figureSVG(g, 52, 38)}<span>${g}</span></button>`
+        : `<button class="v-niche" data-altar="${i}" aria-label="${name} : aucun Gardien"><i class="empty"></i></button>`;
+      col.innerHTML = niche + `<div class="v-column"><b>${name}</b></div>`;
+    }
+    $('vgods').innerHTML = named.map((g) => {
+      const lvl = profile.gods[g].lvl, placed = P.includes(g);
+      return `<button class="medal${ringClass(lvl)}${placed ? ' placed' : ''}${state.vsel === g ? ' sel' : ''}" data-god="${g}" aria-label="${nameLvl(g, lvl)}${placed ? ', déjà sur un autel' : ''}">` +
+        `<span class="disc">${figureSVG(g, 40, 36)}</span><span class="who">${g}${lvl > 1 ? `<small>${ROMAN[lvl]}</small>` : ''}</span></button>`;
+    }).join('');
+    const shelf = $('vgods');
+    shelf.classList.toggle('more', shelf.scrollHeight > shelf.clientHeight + 2 && shelf.scrollTop + shelf.clientHeight < shelf.scrollHeight - 2);
+    const sel = state.vsel;
+    $('vcaption').innerHTML = sel ? `<b>${nameLvl(sel)}</b> · ${E.power(sel, godLvl(sel)).text}`
+      : !named.length ? 'Débloque un dieu : il veillera sur un autel.'
+      : slots === 1 && altars === 2 ? 'Un seul de tes dieux veille : glisse-le sur l’autel de ton choix.'
+      : 'Tes dieux : glisse-les sur un autel. Touche-en un pour lire son pouvoir.';
+  }
+  /** Poser un dieu sur la niche d'un autel : il quitte l'autre ; avec une seule place, il change d'autel. */
+  function assign(god, i) {
+    const L = level();
+    if (!E.patronSlotsForLevel(L) || i >= E.altarsForLevel(L) || !profile.gods[god]) return; // avant le niveau 2, Jouer ne passe pas par ici
+    const p = activePatrons(L);
+    for (let k = 0; k < 2; k++) if (p[k] === god) p[k] = null;
+    p[i] = god;
+    if (E.patronSlotsForLevel(L) < 2) p[1 - i] = null;
+    profile.patrons = p; saveProfile(); state.vsel = null; render();
+    const niche = document.querySelector(`.v-niche[data-altar="${i}"]`);
+    if (niche) anim(niche, [{ transform: 'scale(1)' }, { transform: 'scale(1.06)', offset: .4 }, { transform: 'scale(1)' }], 320);
+    haptic(10);
+  }
+  function unassign(i) { const p = activePatrons(); p[i] = null; profile.patrons = p; saveProfile(); render(); }
+  const ghost = $('ghost');
+  let vd = null; // un médaillon qu'on glisse
+  const nicheAt = (x, y) => { const el = document.elementFromPoint(x, y); return el && el.closest('.v-niche'); };
+  const clearTargets = () => document.querySelectorAll('.v-niche.target').forEach((x) => x.classList.remove('target'));
+  $('vgods').addEventListener('pointerdown', (e) => {
+    const m = e.target.closest('.medal');
+    if (!m || e.button > 0) return;
+    vd = { god: m.dataset.god, x0: e.clientX, y0: e.clientY, moved: false, id: e.pointerId };
+    try { m.setPointerCapture(e.pointerId); } catch (err) { /* sans capture, le glisser marche quand même */ }
+  });
+  $('vgods').addEventListener('pointermove', (e) => {
+    if (!vd || e.pointerId !== vd.id) return;
+    if (!vd.moved && Math.hypot(e.clientX - vd.x0, e.clientY - vd.y0) > 8) {
+      vd.moved = true;
+      ghost.innerHTML = `<span class="medal${ringClass(godLvl(vd.god))}"><span class="disc">${figureSVG(vd.god, 40, 36)}</span></span>`; ghost.hidden = false;
+    }
+    if (!vd.moved) return;
+    ghost.style.transform = `translate(${Math.round(e.clientX - 32)}px, ${Math.round(e.clientY - 26)}px)`;
+    const over = nicheAt(e.clientX, e.clientY);
+    document.querySelectorAll('.v-niche').forEach((x) => x.classList.toggle('target', x === over));
+  });
+  $('vgods').addEventListener('pointerup', (e) => {
+    if (!vd || e.pointerId !== vd.id) return;
+    const d = vd; vd = null; ghost.hidden = true; clearTargets();
+    if (!d.moved) { state.vsel = state.vsel === d.god ? null : d.god; render(); return; } // toucher : lire son pouvoir, puis toucher une niche
+    const over = nicheAt(e.clientX, e.clientY);
+    if (over) assign(d.god, +over.dataset.altar);
+  });
+  $('vgods').addEventListener('pointercancel', () => { vd = null; ghost.hidden = true; clearTargets(); });
+  $('vgods').addEventListener('scroll', () => { const sh = $('vgods'); sh.classList.toggle('more', sh.scrollTop + sh.clientHeight < sh.scrollHeight - 2); });
+  $('vestibule').addEventListener('click', (e) => {
+    const niche = e.target.closest('.v-niche');
+    if (!niche) return;
+    const i = +niche.dataset.altar;
+    if (state.vsel) assign(state.vsel, i);
+    else if (activePatrons()[i]) unassign(i);
+    else { niche.classList.remove('deny'); void niche.offsetWidth; niche.classList.add('deny'); } // rien de choisi : la niche attend un dieu
+  });
+  $('play').addEventListener('click', () => { audio.unlock(); startNight(); });
+
+  // ---- Nanna : voir la carte cachée, une fois par nuit, sans la retourner
+  async function peekCard() {
+    const n = state.night;
+    if (!n || n.over || n.faceUp || state.busy || state.vest) return;
+    const i = n.altars.findIndex((a) => patronKind(a.patron) === 'peek');
+    const r = E.act(n, 'V'); // la vision compte : au rang II, la carte vue vaut double chez Nanna
+    if (!r.ok) return;
+    const c = r.card;
+    state.busy = true;
+    showFace(c); card.classList.add('peek');
+    glowPlate(i);
+    haptic(10);
+    await new Promise((r) => setTimeout(r, 1400)); // le temps de lire : ce n'est pas une animation, « Réduire les animations » ne l'abrège pas
+    card.classList.remove('peek');
+    state.busy = false; state.tReady = performance.now();
+    render();
+  }
+  // ---- la bulle d'un Gardien (D46) : toucher sa plaque la lit ; Nanna y offre sa vision. Le jeu n'impose jamais de
+  // texte pendant la nuit, mais ce qu'on demande, on le lit.
+  const tip = $('tip');
+  function openTip(i) {
+    const n = state.night, a = n && n.altars[i];
+    if (!a || !a.patron) return;
+    const g = a.patron, P = a.power; // le pouvoir de la nuit, à son rang
+    const canPeek = P.kind === 'peek' && E.peeksLeft(n) > 0 && !n.faceUp && !n.over && !state.busy;
+    tip.innerHTML = `<b>${nameLvl(g)} · ${i === 0 ? 'l’Aube' : 'le Crépuscule'}</b>${P.text}` +
+      (P.kind === 'peek' ? (canPeek ? '<br><button id="tip-peek">Voir la carte</button>' : !E.peeksLeft(n) ? '<br><span class="msg">Vision prise pour cette nuit.</span>' : '') : '');
+    tip.hidden = false; state.tipFor = i;
+    const pr = document.querySelector(`.altar[data-altar="${i}"] .plate`).getBoundingClientRect(), tr = tip.getBoundingClientRect();
+    const x = i === 0 ? pr.left : pr.right - tr.width;
+    tip.style.transform = `translate(${Math.round(Math.max(12, Math.min(x, innerWidth - tr.width - 12)))}px, ${Math.round(pr.bottom + 8)}px)`;
+  }
+  function closeTip() { if (!tip.hidden) { tip.hidden = true; state.tipFor = null; } }
+  $('stage').addEventListener('click', (e) => {
+    const p = e.target.closest('button.plate');
+    if (!p) return;
+    const i = +p.dataset.plate;
+    if (state.tipFor === i) closeTip(); else openTip(i);
+  });
+  tip.addEventListener('click', (e) => { if (e.target.closest('#tip-peek')) { closeTip(); peekCard(); } });
+  document.addEventListener('pointerdown', (e) => { if (!tip.hidden && !e.target.closest('#tip, .plate, #stage')) closeTip(); });
+
+  // ---- gestes : tap = retourner ; glisser gauche/droite = poser ; bas = passer ; haut = garder
+  const THRESH = 72, TAP_MAX = 10, FLICK = .7;
+  let g = null, ringTimer = null;
+  const dirOf = (dx, dy) => (Math.abs(dx) > Math.abs(dy) ? (dx < 0 ? 'L' : 'R') : (dy < 0 ? 'U' : 'D'));
+  function setCue(a) { for (const k in cues) cues[k].classList.toggle('on', k === a); }
+  function startRing() {
+    const t0 = performance.now(); card.classList.add('ring');
+    ringTimer = setInterval(() => {
+      const k = Math.min(1, (performance.now() - t0) / 600);
+      card.style.setProperty('--ring', (k * 360) + 'deg');
+      if (k >= 1) { cancelRing(); g = null; request('U'); }
+    }, 16);
+  }
+  function cancelRing() { if (ringTimer) { clearInterval(ringTimer); ringTimer = null; } card.classList.remove('ring'); card.style.removeProperty('--ring'); }
+  stage.addEventListener('pointerdown', (e) => {
+    if (!state.night || state.night.over || e.button > 0 || e.target.closest('#aid, .plate')) return; // la plaque d'un Gardien n'est pas la carte
+    if (!tip.hidden) { closeTip(); return; }                           // ce toucher ferme la bulle, il ne joue pas
+    audio.unlock();
+    g = { id: e.pointerId, x0: e.clientX, y0: e.clientY, t0: performance.now(), dx: 0, dy: 0, moved: false };
+    try { stage.setPointerCapture(e.pointerId); } catch (err) { /* pas de capture : le geste marche quand même */ }
+    if (settings.holdRing && !state.busy && allowed('U')) startRing();
+  });
+  stage.addEventListener('pointermove', (e) => {
+    if (!g || e.pointerId !== g.id) return;
+    g.dx = e.clientX - g.x0; g.dy = e.clientY - g.y0;
+    if (!g.moved && Math.hypot(g.dx, g.dy) > TAP_MAX) { g.moved = true; cancelRing(); }
+    if (!g.moved || state.busy) return;
+    const d = dirOf(g.dx, g.dy), ok = allowed(d), k = ok ? .95 : .25; // résistance quand le geste ne mène nulle part
+    card.style.transform = `translate(${g.dx * k}px, ${g.dy * k}px) rotate(${g.dx * k * .05}deg)`;
+    setCue(ok && Math.hypot(g.dx, g.dy) > THRESH ? d : null);
+  });
+  function release(e) {
+    audio.unlock();
+    const gg = g; g = null; cancelRing(); setCue(null);
+    if (!gg || state.busy) { if (gg && gg.moved) springBack(); return; }
+    const dist = Math.hypot(gg.dx, gg.dy), dt = Math.max(1, performance.now() - gg.t0);
+    if (!gg.moved) { if (dt < 400) request('T'); return; } // tap
+    const d = dirOf(gg.dx, gg.dy);
+    if (dist >= THRESH || (dist > 36 && dist / dt > FLICK)) { if (allowed(d)) request(d); else refuse(d); return; }
+    springBack();
+  }
+  stage.addEventListener('pointerup', (e) => { if (g && e.pointerId === g.id) release(e); });
+  stage.addEventListener('pointercancel', (e) => { if (g && e.pointerId === g.id) { g = null; cancelRing(); setCue(null); springBack(); } });
+  $('end').addEventListener('pointerup', (e) => { // toucher le panneau : Rejouer ; « Patrons » : le vestibule
+    if (!state.night || !state.night.over) return;
+    if (e.target.closest('#to-vest')) { showVestibule(); return; }
+    replay();
+  });
+  $('end').addEventListener('keydown', (e) => { if (e.target.closest('#to-vest') && (e.key === 'Enter' || e.key === ' ')) { e.stopPropagation(); e.preventDefault(); showVestibule(); } });
+  $('aid').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) request(b.dataset.a); });
+
+  // ---- clavier : secours d'accessibilité et outil des tests
+  const KEYS = { ArrowLeft: 'L', ArrowRight: 'R', ArrowDown: 'D', ArrowUp: 'U', ' ': 'T', Enter: 'T' };
+  window.addEventListener('keydown', (e) => {
+    if (!sheet.hidden) { if (e.key === 'Escape') closeSheet(); return; }
+    if (state.home) { if (e.key === ' ' || e.key === 'Enter') { if (e.target.closest && e.target.closest('#home button:not(#home-play)')) return; e.preventDefault(); $('home-play').click(); } return; }
+    if (state.vest) { if (e.key === ' ' || e.key === 'Enter') { if (e.target.closest && e.target.closest('#vestibule button:not(#play), #head button')) return; e.preventDefault(); audio.unlock(); startNight(); } return; }
+    closeTip();
+    if (e.key === 'v' || e.key === 'V') { peekCard(); return; } // Nanna, au clavier
+    if (!(e.key in KEYS)) return;
+    e.preventDefault(); audio.unlock();
+    if (state.night.over) { if (KEYS[e.key] === 'T') replay(); return; }
+    request(KEYS[e.key]);
+  });
+
+  // ---- panthéon : trois ciels, six constellations chacun, dessinés en Canvas 2D sur un semis déterministe
+  const sky = $('sky');
+  /** État d'un dieu pour le joueur : nommé (avec son niveau), endormi, ou verrouillé par la tradition. */
+  function godState(name) {
+    const g = GOD_BY_NAME[name], L = E.levelForXp(profile.xp);
+    if ((E.TRAD_LEVEL[g.trad] || 1) > L) return { kind: 'locked', need: E.TRAD_LEVEL[g.trad] };
+    const st = profile.gods[name];
+    if (st) return { kind: 'named', lvl: st.lvl, best: st.best };
+    return { kind: 'asleep', revealed: profile.revealed[name] || [] };
+  }
+  /** Les points d'une figure, projetés dans un carré de côté `size` centré en (cx, cy). */
+  function figureAt(name, cx, cy, size) {
+    const f = FIGURES[name];
+    return f.pts.map(([x, y]) => ({ x: cx + (x - .5) * size, y: cy + (y - .5) * size }));
+  }
+  function drawSky() {
+    const w = sky.clientWidth || 320, h = Math.round(Math.min(w * 1.25, Math.max(300, window.innerHeight * .52)));
+    const dpr = Math.min(window.devicePixelRatio || 1, 3);
+    sky.style.height = h + 'px'; sky.width = Math.round(w * dpr); sky.height = Math.round(h * dpr);
+    const x = sky.getContext('2d');
+    if (!x) return;
+    x.setTransform(dpr, 0, 0, dpr, 0, 0);
+    x.clearRect(0, 0, w, h);
+    // fond : une traîne laiteuse en diagonale, puis le semis — même graine, même ciel à chaque ouverture
+    const r = E.rng(E.seed32('ciel|' + state.trad));
+    const band = x.createLinearGradient(0, h, w, 0);
+    band.addColorStop(0, 'rgba(36, 48, 78, 0)'); band.addColorStop(.42, 'rgba(44, 58, 92, .30)');
+    band.addColorStop(.58, 'rgba(48, 60, 96, .26)'); band.addColorStop(1, 'rgba(36, 48, 78, 0)');
+    x.fillStyle = band; x.fillRect(0, 0, w, h);
+    for (let i = 0; i < 220; i++) {
+      const px = r() * w, py = r() * h, rad = .28 + r() * .85, a = .08 + r() * .42;
+      x.beginPath(); x.arc(px, py, rad, 0, Math.PI * 2);
+      x.fillStyle = `rgba(206, 218, 240, ${a.toFixed(3)})`; x.fill();
+    }
+    state.hits = []; state.starPoints = {};
+    const size = PLACEMENT.size * w;
+    SKY_ORDER[state.trad].forEach((name, i) => {
+      const f = FIGURES[name], g = GOD_BY_NAME[name], st = godState(name);
+      const cx = PLACEMENT.cols[i % 2] * w, cy = PLACEMENT.rows[Math.floor(i / 2)] * h;
+      const pts = figureAt(name, cx, cy, size);
+      const named = st.kind === 'named', locked = st.kind === 'locked';
+      // les traits de la figure
+      x.beginPath();
+      for (const [a, b] of f.edges) { x.moveTo(pts[a].x, pts[a].y); x.lineTo(pts[b].x, pts[b].y); }
+      x.setLineDash(named ? [] : [2, 4]);
+      x.strokeStyle = locked ? 'rgba(120, 132, 152, .10)' : named ? 'rgba(210, 162, 76, .5)' : 'rgba(151, 160, 176, .24)';
+      x.lineWidth = named ? 1.1 : .8; x.stroke(); x.setLineDash([]);
+      // les étoiles : les trois de la signature sont les brillantes
+      pts.forEach((p, k) => {
+        const isSig = f.sig.indexOf(k);
+        const base = isSig >= 0 ? 2.1 : 1.15;
+        const rad = locked ? base * .6 : named ? base + (isSig >= 0 ? (st.lvl || 1) * .32 : 0) : base * .85;
+        if (named && isSig >= 0) {
+          const grd = x.createRadialGradient(p.x, p.y, 0, p.x, p.y, rad * 5);
+          grd.addColorStop(0, 'rgba(210, 162, 76, .38)'); grd.addColorStop(1, 'rgba(210, 162, 76, 0)');
+          x.fillStyle = grd; x.beginPath(); x.arc(p.x, p.y, rad * 5, 0, Math.PI * 2); x.fill();
+        }
+        x.fillStyle = locked ? 'rgba(150, 162, 182, .20)' : named ? '#F1ECDF' : `rgba(226, 232, 244, ${isSig >= 0 ? .62 : .34})`;
+        if (named && isSig >= 0) { // les brillantes portent une croix d'éclat, comme une étoile de première grandeur
+          const arm = rad * 3.4;
+          x.save(); x.globalAlpha = .55; x.strokeStyle = x.fillStyle; x.lineWidth = .7;
+          x.beginPath(); x.moveTo(p.x - arm, p.y); x.lineTo(p.x + arm, p.y); x.moveTo(p.x, p.y - arm); x.lineTo(p.x, p.y + arm); x.stroke(); x.restore();
+        }
+        x.beginPath(); x.arc(p.x, p.y, rad, 0, Math.PI * 2);
+        x.fill();
+        // un symbole arraché par frôlement s'écrit près de son étoile
+        if (st.kind === 'asleep' && isSig >= 0 && st.revealed.includes(E.DOM_INDEX[g.sigArr[isSig]])) {
+          x.font = '600 11px ui-monospace, monospace'; x.fillStyle = 'rgba(210, 162, 76, .95)'; x.textAlign = 'center';
+          x.fillText(g.sigArr[isSig].slice(0, 2), p.x, p.y - rad - 5);
+        }
+      });
+      const low = Math.max(...pts.map((p) => p.y)), high = Math.min(...pts.map((p) => p.y));
+      if (named) { // le nom se pose sous la figure, jamais sur une étoile
+        const y = low + 16 < h - 6 ? low + 16 : high - 10;
+        x.font = '500 11px -apple-system, system-ui, sans-serif'; x.textAlign = 'center';
+        x.fillStyle = 'rgba(210, 162, 76, .95)';
+        x.fillText(name.toUpperCase() + (st.lvl > 1 ? '  ' + ROMAN[st.lvl] : ''), cx, y);
+      }
+      if (state.selected === name) {
+        x.beginPath(); x.arc(cx, cy, size * .62, 0, Math.PI * 2);
+        x.strokeStyle = 'rgba(210, 162, 76, .45)'; x.setLineDash([3, 3]); x.lineWidth = 1; x.stroke(); x.setLineDash([]);
+      }
+      state.hits.push({ name, x: cx, y: cy, r: size * .58 });
+      state.starPoints[name] = pts;
+    });
+  }
+  function renderPantheon() {
+    const L = E.levelForXp(profile.xp);
+    $('trads').innerHTML = TRADS.map((t) => {
+      const locked = (E.TRAD_LEVEL[t] || 1) > L;
+      return `<button data-trad="${t}" role="tab" aria-selected="${t === state.trad}" class="${locked ? 'locked' : ''}">${t}${locked ? ' · niv. ' + E.TRAD_LEVEL[t] : ''}</button>`;
+    }).join('') + `<span id="count">${Object.keys(profile.gods).length} / ${E.GODS.length}</span>`;
+    drawSky();
+    renderGodCard();
+  }
+  function renderGodCard() {
+    const box = $('godcard');
+    if (!state.selected) {
+      box.className = '';
+      box.innerHTML = '<p class="hint">Touche une constellation pour la lire. Les dieux débloqués brillent. Pour débloquer les autres, réunis leurs trois symboles parmi les trois plus fortes étoiles d’un autel ; deux sur trois te donnent un indice.</p>';
+      return;
+    }
+    const g = GOD_BY_NAME[state.selected], st = godState(state.selected);
+    const sigCells = (known) => g.sigArr.map((d) => `<i class="${known.includes(d) ? 'on' : ''}">${known.includes(d) ? d.slice(0, 2) : '· ·'}</i>`).join('');
+    if (st.kind === 'named') {
+      box.className = 'named';
+      const now = E.powerRank(st.lvl); // IV et V gardent le pouvoir du rang III
+      const ranks = E.PATRONS[g.name].ranks.map((r, k) => `<li class="${k + 1 < now ? 'done' : k + 1 === now ? 'now' : ''}"${k + 1 === now ? ' aria-current="true"' : ''}><i>${ROMAN[k + 1]}</i><span>${r.text}</span></li>`).join('');
+      box.innerHTML = `<div class="who"><b>${g.name}</b><span>${g.trad} · rang ${ROMAN[st.lvl]}</span></div>` +
+        `<div class="sig">${sigCells(g.sigArr)}</div><p>${GOD_LINE[g.name] || ''}</p>` +
+        `<ol class="ranks" aria-label="Son pouvoir de Gardien, rang par rang">${ranks}</ol>` +
+        (now < E.POWER_RANKS ? '<p class="next">Réunis encore ses trois symboles pour le renforcer.</p>' : '') +
+        `<p class="attr">Sa constellation dessine ${FIGURES[g.name].attr}.</p>`;
+    } else if (st.kind === 'locked') {
+      box.className = '';
+      box.innerHTML = `<div class="who"><b>Verrouillé</b><span>${g.trad}</span></div><p class="hint">Cette tradition s’ouvre au niveau ${st.need}.</p>`;
+    } else {
+      const known = g.sigArr.filter((d) => st.revealed.includes(E.DOM_INDEX[d]));
+      box.className = '';
+      box.innerHTML = `<div class="who"><b>Non découvert</b><span>${g.trad}</span></div><div class="sig">${sigCells(known)}</div>` +
+        `<p class="hint">${known.length ? 'Réunis ses trois symboles parmi les trois plus fortes étoiles d’un autel pour le débloquer.' : 'Aucun indice pour l’instant.'}</p>`;
+    }
+  }
+  $('trads').addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-trad]');
+    if (!b) return;
+    state.trad = b.dataset.trad; state.selected = null; renderPantheon();
+  });
+  let skyPress = null;
+  sky.addEventListener('pointerdown', (e) => { skyPress = { x: e.clientX, y: e.clientY }; });
+  sky.addEventListener('pointerup', (e) => {
+    if (!skyPress || Math.hypot(e.clientX - skyPress.x, e.clientY - skyPress.y) > 12) { skyPress = null; return; }
+    skyPress = null;
+    const rect = sky.getBoundingClientRect(), px = e.clientX - rect.left, py = e.clientY - rect.top;
+    let best = null, bestD = Infinity;
+    for (const h of state.hits) { const d = Math.hypot(px - h.x, py - h.y); if (d < h.r && d < bestD) { best = h.name; bestD = d; } }
+    state.selected = best === state.selected ? null : best;
+    drawSky(); renderGodCard();
+    // la fiche tient sous le ciel : on la fait monter jusqu'à la voir entière (ses rangs compris, D48), le bas du ciel reste
+    if (state.selected) $('godcard').scrollIntoView({ block: 'nearest', behavior: REDUCE ? 'auto' : 'smooth' });
+  });
+
+  // ---- feuille : onglets, Stats, Réglages
+  const median = (arr) => { if (!arr.length) return null; const s = arr.slice().sort((a, b) => a - b); return s[Math.floor(s.length / 2)]; };
+  function computeStats() {
+    const log = profile.log, kept = log.filter((l) => l.kind === 'keep'), busts = log.length - kept.length;
+    const dec = profile.decisions || [];
+    const pct = (a, b) => (b ? Math.round(100 * a / b) + ' %' : '—');
+    const secs = (v) => (v == null ? '—' : (v / 1000).toFixed(2).replace('.', ',') + ' s');
+    const hidden = median(dec.filter((d) => d.up === false && d.ms != null).map((d) => d.ms));   // la décision qui compte
+    const place = median(dec.filter((d) => d.up === true && d.ms != null).map((d) => d.ms));
+    const noPass = median(dec.filter((d) => d.passes === 0 && d.ms != null).map((d) => d.ms));
+    const replays = log.filter((l) => l.replayMs != null && l.replayMs < 10000).length;
+    return [
+      ['Nuits', log.length],
+      ['Tombées<small>cible 15 à 40 %</small>', log.length ? `${busts} · ${pct(busts, log.length)}` : '0'],
+      ['Score moyen', log.length ? Math.round(log.reduce((s, l) => s + l.score, 0) / log.length) : 0],
+      ['Meilleur score', profile.best || 0],
+      ['Étoiles médianes en gardant', median(kept.map((l) => l.stars.reduce((a, b) => a + b, 0))) ?? 0],
+      ['Nuits gardées qui débloquent un dieu<small>cible 25 à 45 %</small>', pct(kept.filter((l) => l.gods.length).length, kept.length)],
+      ['Hésitation face cachée<small>doit dépasser nettement la pose</small>', secs(hidden)],
+      ['Hésitation à la pose', secs(place)],
+      ['Hésitation sans passe', secs(noPass)],
+      ['Relances spontanées<small>Rejouer en moins de 10 s</small>', log.length ? `${replays} · ${pct(replays, log.length)}` : '0'],
+      ['Dieux débloqués', `${Object.keys(profile.gods).length} / ${E.GODS.length}`],
+      ['XP', profile.xp],
+    ];
+  }
+  function showTab(name) {
+    state.tab = name;
+    for (const b of $('tabs').querySelectorAll('button')) b.setAttribute('aria-selected', String(b.dataset.tab === name));
+    for (const t of ['pantheon', 'stats', 'reglages']) $('tab-' + t).hidden = t !== name;
+    if (name === 'pantheon') renderPantheon();
+    if (name === 'stats') $('stats').innerHTML = computeStats().map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
+  }
+  let resetArmed = null;
+  function disarmReset() { if (resetArmed) clearTimeout(resetArmed); resetArmed = null; $('reset').textContent = 'Effacer la sauvegarde'; }
+  let homeArmed = null;
+  function disarmHome() { if (homeArmed) clearTimeout(homeArmed); homeArmed = null; $('to-home').textContent = '‹ Accueil'; }
+  $('to-home').addEventListener('click', () => {
+    const n = state.night, engaged = !state.home && !state.vest && n && !n.over && (n.idx > 0 || n.faceUp);
+    if (engaged && !homeArmed) { homeArmed = setTimeout(disarmHome, 4000); $('to-home').textContent = 'Quitter la nuit ?'; return; } // deux temps : la nuit ne comptera pas
+    disarmHome(); sheet.hidden = true; showHome();
+  });
+  function openSheet() {
+    closeTip(); disarmHome();
+    $('to-home').hidden = !!state.home; // depuis l'accueil, « Fermer » suffit
+    $('opt-aid').checked = !!settings.aidButtons; $('opt-ring').checked = !!settings.holdRing; $('opt-sound').checked = settings.sound === true;
+    $('export-msg').textContent = ''; $('reset-msg').textContent = ''; disarmReset();
+    $('replay-pair').hidden = E.altarsForLevel(E.levelForXp(profile.xp)) < 2; // la leçon de la paire attend le second autel
+    sheet.hidden = false;
+    showTab(state.tab);
+  }
+  function closeSheet() { disarmReset(); sheet.hidden = true; render(); }
+  $('menu').addEventListener('click', openSheet);
+  $('close').addEventListener('click', closeSheet);
+  $('tabs').addEventListener('click', (e) => { const b = e.target.closest('button[data-tab]'); if (b) showTab(b.dataset.tab); });
+  $('opt-aid').addEventListener('change', (e) => { settings.aidButtons = e.target.checked; saveSettings(); });
+  $('opt-sound').addEventListener('change', (e) => { settings.sound = e.target.checked; saveSettings(); if (settings.sound) audio.play('flip'); });
+  $('opt-ring').addEventListener('change', (e) => { settings.holdRing = e.target.checked; saveSettings(); });
+  $('replay-tuto').addEventListener('click', () => { sheet.hidden = true; startNight({ lesson: 'first' }); });
+  $('replay-pair').addEventListener('click', () => { sheet.hidden = true; startNight({ lesson: 'pair' }); });
+  $('export').addEventListener('click', async () => {
+    const json = state.exportJSON(), msg = $('export-msg');
+    try {
+      const file = new File([json], 'noctuaire.json', { type: 'application/json' });
+      if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: 'Noctuaire' }); msg.textContent = 'Partagé.'; return; }
+      await navigator.clipboard.writeText(json); msg.textContent = 'Copié dans le presse-papiers.';
+    } catch (e) { msg.textContent = 'Export impossible ici.'; }
+  });
+  $('reset').addEventListener('click', () => { // deux temps : armer (4 s), puis confirmer
+    if (!resetArmed) { resetArmed = setTimeout(disarmReset, 4000); $('reset').textContent = 'Confirmer l’effacement'; return; }
+    disarmReset();
+    store.clear(); location.replace(location.pathname);
+  });
+
+  // ---- dimensions : la colonne d'autel et la carte se partagent la place réellement disponible
+  function fitBoard() {
+    const root = document.documentElement, stage = $('stage');
+    const sw = stage.clientWidth, sh = $('well').clientHeight;
+    if (sw <= 0 || sh <= 0) return;
+    // huit places + la ligne de total (+ la plaque du Patron, 44 px et son intervalle) doivent tenir dans la scène
+    const plate = state.night && state.night.altars.some((a) => a.patron) ? 50 : 0;
+    const slot = Math.max(22, Math.min(38, Math.floor((sh - 52 - plate) / 8) - 3));
+    root.style.setProperty('--slot-h', slot + 'px');
+    root.style.setProperty('--altar-h', (slot * 8 + 7 * 3 + 46 + plate) + 'px'); // huit places + la ligne de total
+    root.style.setProperty('--altar-w', Math.max(50, Math.min(62, Math.round(sw * .155))) + 'px');
+    const w = well.clientWidth, h = well.clientHeight - 44; // moins la bande des repères Garder / Passer
+    // w − 58 : de chaque côté, les paliers (≈ 10 px), le repère « Poser » (13 px) et deux marges de 3 px
+    if (w > 0 && h > 0) root.style.setProperty('--card-w', Math.round(Math.max(100, Math.min(w * .74, w - 58, 200, h / 1.5))) + 'px');
+  }
+  const fitCard = fitBoard;
+  if (window.ResizeObserver) new ResizeObserver(fitBoard).observe($('stage')); else window.addEventListener('resize', fitBoard);
+  window.addEventListener('resize', () => { fitBoard(); if (!sheet.hidden && state.tab === 'pantheon') drawSky(); });
+  fitBoard();
+
+  // ---- mise à jour : l'app de l'écran d'accueil reprend la page qu'elle a en mémoire, et GitHub Pages la garde en cache
+  // dix minutes. Au lancement et à chaque retour au premier plan, on demande au serveur quelle version est en ligne ;
+  // si elle a changé, on recharge — jamais au milieu d'une nuit : à la suivante.
+  const VERSION = ((document.querySelector('meta[name="noctuaire-version"]') || {}).content || '').split(' ');
+  state.version = { sha: VERSION[0] || '', date: VERSION[1] || '' };
+  const assembled = /^[0-9a-f]{7,}$/.test(state.version.sha); // page servie par le serveur ou GitHub Pages, pas le fichier brut
+  $('version').textContent = assembled
+    ? `Version ${state.version.sha} · ${new Date(state.version.date).toLocaleString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`
+    : 'Version de travail';
+  let lastCheck = 0;
+  async function checkUpdate(force) {
+    if (!assembled || !window.fetch || (!force && performance.now() - lastCheck < 60000)) return;
+    lastCheck = performance.now();
+    try {
+      const html = await (await fetch(location.pathname, { cache: 'no-store' })).text();
+      const m = html.match(/<meta name="noctuaire-version" content="([0-9a-f]{7,}) /);
+      if (m && m[1] !== state.version.sha) { state.updateTo = m[1]; applyUpdate(); }
+    } catch (e) { /* hors ligne : on joue la version qu'on a */ }
+  }
+  /** Recharge sur la version en ligne si aucune nuit n'est engagée ; renvoie true si la page s'en va. */
+  function applyUpdate() {
+    const n = state.night;
+    if (!state.updateTo || !sheet.hidden) return false;
+    if (!(state.home || state.vest || !n || n.over || (n.idx === 0 && !n.faceUp))) return false; // une nuit en cours : à la suivante
+    try { // jamais deux fois pour la même version : si le cache résiste, on ne tourne pas en rond
+      if (sessionStorage.getItem('noctuaire.update') === state.updateTo) return false;
+      sessionStorage.setItem('noctuaire.update', state.updateTo);
+    } catch (e) { /* sans stockage de session, on tente une fois */ }
+    location.replace(location.pathname + '?v=' + state.updateTo); // une adresse neuve : aucun cache ne la connaît
+    return true;
+  }
+  state.checkUpdate = checkUpdate; // pour les tests
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkUpdate(); });
+  window.addEventListener('pageshow', (e) => { if (e.persisted) checkUpdate(true); });
+
+  // ---- départ : la leçon due (sauf graine imposée) ; ?tuto=1 force la première, ?tuto=2 celle de la paire ;
+  // puis l'accueil à chaque lancement (D44) ; Jouer mène à la préparation dès qu'un Gardien peut être posé
+  const asked = { 1: 'first', 2: 'pair' }[params.get('tuto')] || null;
+  if (!asked && !state.seedOnce && !lessonFor({}, level())) showHome();
+  else startNight({ lesson: asked });
+  checkUpdate(true);
+})();
+</script>
+</body>
+</html>
